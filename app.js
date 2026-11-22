@@ -9,6 +9,10 @@ const EX = {
   lunge:  { name: "Lunges",   one: "lunge",   step: 2.5, perLeg: true },
 };
 const PUSH_VAR = ["Floor", "Feet up", "Backpack"];   // push-up variations, easiest first
+const PULL_VAR = ["Standard", "L-sit"];              // pull-up types; each keeps its own max, records and progression
+const VARS = { pullup: PULL_VAR, pushup: PUSH_VAR };
+const varName = (ex, v) => ex === "pullup" ? PULL_VAR[v] : PUSH_VAR[v].toLowerCase();
+const gtgV = () => ((S.settings.gtgVar || {}).pullup) || 0;   // type used by the quick pull-up button
 const KEY = "stoicreps.v1";
 const BODYWEIGHT_DEFAULT = 67;
 
@@ -29,7 +33,7 @@ function defaults() {
       { id: 4, ex: "squat", reps: 20, kg: 0, label: "20 bodyweight squats, clean form", manual: true },
       { id: 5, ex: "squat", reps: 10, kg: 20, label: "10 goblet squats with 20 kg" },
     ],
-    sets: [],          // { t, ex, reps, kg, v (push-up variation), gtg }
+    sets: [],          // { t, ex, reps, kg, v (push-up variation / pull-up type), gtg }
     body: {},          // "YYYY-MM-DD": kg
     daily: {},         // "YYYY-MM-DD": { creatine, protein }
     favs: [],          // quote ids
@@ -77,16 +81,16 @@ function range(ex, kg) {
   return r;
 }
 // one number per load so loads can be compared: push-up variation first, then added kg
-const loadVal = s => (s.ex === "pushup" ? (s.v || 0) * 1000 : 0) + (s.kg || 0);
+const loadVal = s => (VARS[s.ex] ? (s.v || 0) * 1000 : 0) + (s.kg || 0);
 function loadText(ex, kg, v) {
   const parts = [];
-  if (ex === "pushup" && v) parts.push(PUSH_VAR[v].toLowerCase());
+  if (VARS[ex] && v) parts.push(varName(ex, v));
   if (kg > 0) parts.push(`+${fmtKg(kg)} kg`);
   return parts.length ? " @ " + parts.join(" ") : "";
 }
-function maxBw(ex) {   // best bodyweight reps, including the bests from before the app
-  let m = (S.settings.baseline[ex] || 0);
-  for (const s of setsOf(ex)) if (!s.kg && !(s.v > 0)) m = Math.max(m, s.reps);
+function maxBw(ex, v = 0) {   // best bodyweight reps (v: pull-up type), including the bests from before the app
+  let m = v ? 0 : (S.settings.baseline[ex] || 0);
+  for (const s of setsOf(ex)) if (!s.kg && (s.v || 0) === v) m = Math.max(m, s.reps);
   return m;
 }
 
@@ -98,11 +102,11 @@ function sessions(ex, beforeToday) {   // working sets (not grease-the-groove) g
 }
 function stepUp(ex, kg, v) {
   if (ex === "pushup") { if (v < 2) return { kg: v + 1 === 2 ? 5 : 0, v: v + 1 }; return { kg: kg + 2.5, v: 2 }; }
-  return { kg: kg + EX[ex].step, v: 0 };
+  return { kg: kg + EX[ex].step, v: ex === "pullup" ? v : 0 };
 }
 function stepDown(ex, kg, v) {
   if (ex === "pushup") { if (v === 2 && kg > 5) return { kg: kg - 2.5, v: 2 }; if (v > 0) return { kg: 0, v: v - 1 }; return { kg: 0, v: 0 }; }
-  return { kg: Math.max(0, kg - EX[ex].step), v: 0 };
+  return { kg: Math.max(0, kg - EX[ex].step), v: ex === "pullup" ? v : 0 };
 }
 // -> { sets, reps, kg, v, kind: "start" | "up" | "down" | "build", text }
 // today = true: the plan for today's session (judged on sessions before today), so it stays put while you log sets
@@ -177,21 +181,23 @@ function weekReps(ex, wk) {
 
 // ---------- logging ----------
 function logSet(set) {
-  const prBw = maxBw(set.ex);
+  const pv = set.ex === "pullup" ? (set.v || 0) : 0, prBw = maxBw(set.ex, pv);
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
   S.sets.push(set); save();
   // records
   let pr = null;
-  if (!set.kg && !(set.v > 0) && set.reps > prBw) pr = `${set.reps} ${EX[set.ex].one}s unbroken. Your best ever.`;
+  if (!set.kg && (set.v || 0) === pv && set.reps > prBw) pr = `${set.reps} ${pv ? "L-sit " : ""}${EX[set.ex].one}s unbroken. Your best ever.`;
   else if (set.kg > 0 && !prior.some(s => s.kg >= set.kg && s.reps >= set.reps)) pr = `${set.reps} × +${fmtKg(set.kg)} kg is a new ${EX[set.ex].one} record.`;
   return pr;
 }
-function gtgWarn(reps) { return reps > 0.6 * maxBw("pullup"); }
+function gtgWarn(reps, v = gtgV()) { const m = maxBw("pullup", v); return m > 0 && reps > 0.6 * m; }
 function quickSet(ex) {
   const reps = S.settings.gtg[ex];
-  const pr = logSet({ t: stamp(), ex, reps, kg: 0, v: 0, gtg: true });
-  if (ex === "pullup" && gtgWarn(reps)) toast(`Logged ${reps}. That's over 60% of your max (${maxBw("pullup")}) — keep groove sets easy for your elbows.`, true);
-  else toast(`Logged ${reps} ${EX[ex].one}s. Groove greased.`);
+  const v = ex === "pullup" ? gtgV() : 0;
+  const warn = ex === "pullup" && gtgWarn(reps, v), max = maxBw("pullup", v);   // judged on the max before this set
+  const pr = logSet({ t: stamp(), ex, reps, kg: 0, v, gtg: true });
+  if (warn) toast(`Logged ${reps}. That's over 60% of your ${v ? "L-sit " : ""}max (${max}) — keep groove sets easy for your elbows.`, true);
+  else toast(`Logged ${reps} ${v ? "L-sit " : ""}${EX[ex].one}s. Groove greased.`);
   if (pr) celebrate(pr); else render();
   $("#home-quote") && ($("#home-quote").innerHTML = quoteCard(nextQuote()));
 }
@@ -205,14 +211,15 @@ function openSheet(ex) {
   $("#sh-title").textContent = EX[ex].name + (logDay ? " · " + dayLabel(logDay) : "");
   $("#sh-next").textContent = sg.text.replace(/^Next:/, logDay ? "Plan:" : "Today:");
   $("#sh-per").textContent = EX[ex].perLeg ? "(per leg)" : "";
-  $("#sh-var").hidden = ex !== "pushup";
+  $("#sh-var").hidden = !VARS[ex];
+  if (VARS[ex]) $("#sh-var label").textContent = ex === "pullup" ? "Pull-up type" : "Push-up variation";
   $("#sh-quote").innerHTML = "";
   drawSheet(); $("#sheet").hidden = false;
 }
 function drawSheet() {
   $("#sh-reps").textContent = cur.reps;
   $("#sh-kg").textContent = cur.kg ? "+" + fmtKg(cur.kg) : "0";
-  if (cur.ex === "pushup") $("#sh-var-seg").innerHTML = PUSH_VAR.map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
+  if (VARS[cur.ex]) $("#sh-var-seg").innerHTML = VARS[cur.ex].map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
   const today = setsOf(cur.ex).filter(s => dayKey(s.t) === curDay());
   $("#sh-today").innerHTML = today.length ? today.map(s => `<span class="${s.gtg ? "gtg" : ""}">${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}</span>`).join("") : `<span class="muted" style="background:none;padding:0">No sets yet ${logDay ? "that day" : "today"}</span>`;
 }
@@ -268,8 +275,9 @@ function homeView() {
 
 // a quick-set button (tap to log) with − / + underneath to change how many reps it logs
 function quickBox(ex, name, n) {
-  const warn = ex === "pullup" && gtgWarn(n);
-  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${name} ×${n}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>
+  const v = ex === "pullup" ? gtgV() : 0, warn = ex === "pullup" && gtgWarn(n, v);
+  const type = ex === "pullup" ? `<div class="qvar">${PULL_VAR.map((t, i) => `<button data-gvar="${i}" class="${i === v ? "on" : ""}">${t}</button>`).join("")}</div>` : "";
+  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${v ? "L-sit " : ""}${name} ×${n}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>${type}
     <div class="qstep"><button data-gstep="${ex}:-1" aria-label="Fewer ${name}" ${n <= 1 ? "disabled" : ""}>−</button><span>${n}</span><button data-gstep="${ex}:1" aria-label="More ${name}">+</button></div></div>`;
 }
 
@@ -304,7 +312,7 @@ function barChart(bars) {          // [{ x, y }]
 const shortDate = k => { const d = keyToDate(k); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
 function goalProgress(g) {
-  const best = setsOf(g.ex).filter(s => (s.kg || 0) >= g.kg && (g.ex !== "pushup" || !(s.v > 0) || g.kg > 0)).reduce((m, s) => Math.max(m, s.reps), 0);
+  const best = setsOf(g.ex).filter(s => (s.kg || 0) >= g.kg && (!(s.v > 0) || (g.ex === "pushup" && g.kg > 0))).reduce((m, s) => Math.max(m, s.reps), 0);
   const base = g.kg === 0 ? (S.settings.baseline[g.ex] || 0) : 0;
   const b = Math.max(best, base);
   return { best: b, done: g.done || (!g.manual && b >= g.reps) };
@@ -396,11 +404,12 @@ document.addEventListener("click", e => {
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.quick) { quickSet(d.quick); return; }
+  if (d.gvar !== undefined) { S.settings.gtgVar = Object.assign({}, S.settings.gtgVar, { pullup: +d.gvar }); save(); render(); return; }
   if (d.gstep) { const [ex, n] = d.gstep.split(":"), v = Math.max(1, Math.min(50, S.settings.gtg[ex] + +n));
     if (v === S.settings.gtg[ex]) return;
     const was = ex === "pullup" && gtgWarn(S.settings.gtg[ex]);
     S.settings.gtg[ex] = v; save(); render();
-    if (ex === "pullup" && gtgWarn(v) && !was) toast(`${v} is over 60% of your max (${maxBw("pullup")}). Groove sets should feel easy.`, true);
+    if (ex === "pullup" && gtgWarn(v) && !was) toast(`${v} is over 60% of your ${gtgV() ? "L-sit " : ""}max (${maxBw("pullup", gtgV())}). Groove sets should feel easy.`, true);
     return; }
   if (d.day !== undefined) { const n = +d.day, k = n === 0 ? dayKey() : addDays(curDay(), n);
     logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
@@ -408,9 +417,9 @@ document.addEventListener("click", e => {
   if (d.close !== undefined) { closeSheet(); return; }
   if (d.closeModal !== undefined) { $("#modal").hidden = true; render(); return; }
   if (d.step) { const [f, n] = d.step.split(":"); cur[f] = Math.max(f === "reps" ? 1 : 0, Math.round((cur[f] + +n) * 10) / 10); if (cur.ex === "pushup" && f === "kg" && cur.kg > 0) cur.v = 2; drawSheet(); return; }
-  if (d.var !== undefined) { cur.v = +d.var; if (cur.v < 2) cur.kg = 0; drawSheet(); return; }
+  if (d.var !== undefined) { cur.v = +d.var; if (cur.ex === "pushup" && cur.v < 2) cur.kg = 0; drawSheet(); return; }
   if (b.id === "sh-log") {
-    const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: cur.ex === "pushup" ? cur.v : 0, gtg: false });
+    const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: VARS[cur.ex] ? cur.v : 0, gtg: false });
     drawSheet();
     if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`); }
     return;
