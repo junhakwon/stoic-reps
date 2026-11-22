@@ -263,10 +263,14 @@ function homeView() {
       <button class="pill check ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
     </div>
     <div class="grid">${ex}</div>
-    <div class="quick">
-      <button data-quick="pullup" class="${gtgWarn(gp) ? "warn" : ""}">Quick pull-ups ×${gp}<small>${gtgWarn(gp) ? "over 60% of max" : "grease the groove"}</small></button>
-      <button data-quick="pushup">Quick push-ups ×${gu}<small>grease the groove</small></button>
-    </div>`;
+    <div class="quick">${quickBox("pullup", "pull-ups", gp)}${quickBox("pushup", "push-ups", gu)}</div>`;
+}
+
+// a quick-set button (tap to log) with − / + underneath to change how many reps it logs
+function quickBox(ex, name, n) {
+  const warn = ex === "pullup" && gtgWarn(n);
+  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${name} ×${n}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>
+    <div class="qstep"><button data-gstep="${ex}:-1" aria-label="Fewer ${name}" ${n <= 1 ? "disabled" : ""}>−</button><span>${n}</span><button data-gstep="${ex}:1" aria-label="More ${name}">+</button></div></div>`;
 }
 
 // --- charts (inline SVG) ---
@@ -392,6 +396,12 @@ document.addEventListener("click", e => {
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.quick) { quickSet(d.quick); return; }
+  if (d.gstep) { const [ex, n] = d.gstep.split(":"), v = Math.max(1, Math.min(50, S.settings.gtg[ex] + +n));
+    if (v === S.settings.gtg[ex]) return;
+    const was = ex === "pullup" && gtgWarn(S.settings.gtg[ex]);
+    S.settings.gtg[ex] = v; save(); render();
+    if (ex === "pullup" && gtgWarn(v) && !was) toast(`${v} is over 60% of your max (${maxBw("pullup")}). Groove sets should feel easy.`, true);
+    return; }
   if (d.day !== undefined) { const n = +d.day, k = n === 0 ? dayKey() : addDays(curDay(), n);
     logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
   if (d.daily) { const k = curDay(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
