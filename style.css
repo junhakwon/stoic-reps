@@ -105,3 +105,13 @@ input[type=text] { width: 100%; }
 .small-btn { background: var(--card2); border-radius: 12px; min-height: 48px; padding: 0 16px; font-weight: 600; }
 .pr-card { text-align: center; }
 .pr-card .big-emoji { font-size: 44px; }
+
+/* day switcher (log a past day) */
+.daybar { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 16px; padding: 6px; margin-bottom: 10px; }
+.daybar span { flex: 1; text-align: center; }
+.daybar button { min-width: 48px; min-height: 44px; border-radius: 12px; background: var(--card2); color: var(--text); font-size: 22px; border: 0; }
+.daybar button:disabled { opacity: .3; }
+.daybar.past { background: var(--accent); color: var(--accent-ink); }
+.daybar.past button { background: rgba(0,0,0,.18); color: var(--accent-ink); }
+.daynote { font-size: 14px; margin: -2px 2px 10px; }
+.link { background: none; border: 0; color: var(--accent); font: inherit; font-weight: 700; padding: 0; text-decoration: underline; }

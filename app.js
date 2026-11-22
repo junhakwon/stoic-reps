@@ -52,6 +52,17 @@ const keyToDate = k => { const [y, m, d] = k.split("-").map(Number); return new 
 const addDays = (k, n) => { const d = keyToDate(k); d.setDate(d.getDate() + n); return dayKey(d.getTime()); };
 const weekStart = k => { const d = keyToDate(k); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return dayKey(d.getTime()); }; // Monday
 
+// the day being logged: today, or a past day picked on Home (not saved, so the app always opens on today)
+let logDay = null;
+const curDay = () => logDay || dayKey();
+const stamp = () => logDay ? keyToDate(logDay).setHours(12, 0, 0, 0) : Date.now();
+const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function dayLabel(k) {
+  if (k === dayKey()) return "Today";
+  if (k === addDays(dayKey(), -1)) return "Yesterday";
+  const d = keyToDate(k); return `${WD[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 // ---------- helpers ----------
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -178,7 +189,7 @@ function logSet(set) {
 function gtgWarn(reps) { return reps > 0.6 * maxBw("pullup"); }
 function quickSet(ex) {
   const reps = S.settings.gtg[ex];
-  const pr = logSet({ t: Date.now(), ex, reps, kg: 0, v: 0, gtg: true });
+  const pr = logSet({ t: stamp(), ex, reps, kg: 0, v: 0, gtg: true });
   if (ex === "pullup" && gtgWarn(reps)) toast(`Logged ${reps}. That's over 60% of your max (${maxBw("pullup")}) — keep groove sets easy for your elbows.`, true);
   else toast(`Logged ${reps} ${EX[ex].one}s. Groove greased.`);
   if (pr) celebrate(pr); else render();
@@ -191,8 +202,8 @@ function openSheet(ex) {
   const sg = suggest(ex, true), last = setsOf(ex).filter(s => !s.gtg).pop();
   const sameLoad = last && (last.kg || 0) === sg.kg && (last.v || 0) === sg.v;
   cur = { ex, reps: sameLoad ? last.reps : sg.reps, kg: sg.kg, v: sg.v };
-  $("#sh-title").textContent = EX[ex].name;
-  $("#sh-next").textContent = sg.text.replace(/^Next:/, "Today:");
+  $("#sh-title").textContent = EX[ex].name + (logDay ? " · " + dayLabel(logDay) : "");
+  $("#sh-next").textContent = sg.text.replace(/^Next:/, logDay ? "Plan:" : "Today:");
   $("#sh-per").textContent = EX[ex].perLeg ? "(per leg)" : "";
   $("#sh-var").hidden = ex !== "pushup";
   $("#sh-quote").innerHTML = "";
@@ -202,8 +213,8 @@ function drawSheet() {
   $("#sh-reps").textContent = cur.reps;
   $("#sh-kg").textContent = cur.kg ? "+" + fmtKg(cur.kg) : "0";
   if (cur.ex === "pushup") $("#sh-var-seg").innerHTML = PUSH_VAR.map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
-  const today = setsOf(cur.ex).filter(s => dayKey(s.t) === dayKey());
-  $("#sh-today").innerHTML = today.length ? today.map(s => `<span class="${s.gtg ? "gtg" : ""}">${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}</span>`).join("") : `<span class="muted" style="background:none;padding:0">No sets yet today</span>`;
+  const today = setsOf(cur.ex).filter(s => dayKey(s.t) === curDay());
+  $("#sh-today").innerHTML = today.length ? today.map(s => `<span class="${s.gtg ? "gtg" : ""}">${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}</span>`).join("") : `<span class="muted" style="background:none;padding:0">No sets yet ${logDay ? "that day" : "today"}</span>`;
 }
 function closeSheet() { $("#sheet").hidden = true; cur = null; render(); }
 
@@ -232,7 +243,7 @@ function render() {
 }
 
 function homeView() {
-  const d = dayKey(), daily = S.daily[d] || {};
+  const d = curDay(), daily = S.daily[d] || {};
   const ex = Object.keys(EX).map(k => {
     const sg = suggest(k), last = setsOf(k).filter(s => !s.gtg).pop();
     return `<button class="ex" data-ex="${k}"><span class="name">${EX[k].name}</span>
@@ -242,6 +253,10 @@ function homeView() {
   const gp = S.settings.gtg.pullup, gu = S.settings.gtg.pushup;
   return `<h1>Stoic Reps</h1>
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
+    <div class="daybar ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
+      <span>${logDay ? "Logging for " : ""}<b>${dayLabel(d)}</b></span>
+      <button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div>
+    ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
     <div class="row">
       <div class="pill"><b>${streak()}</b><span class="muted">day streak</span></div>
       <button class="pill check ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
@@ -377,13 +392,15 @@ document.addEventListener("click", e => {
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.quick) { quickSet(d.quick); return; }
-  if (d.daily) { const k = dayKey(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
+  if (d.day !== undefined) { const n = +d.day, k = n === 0 ? dayKey() : addDays(curDay(), n);
+    logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
+  if (d.daily) { const k = curDay(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
   if (d.close !== undefined) { closeSheet(); return; }
   if (d.closeModal !== undefined) { $("#modal").hidden = true; render(); return; }
   if (d.step) { const [f, n] = d.step.split(":"); cur[f] = Math.max(f === "reps" ? 1 : 0, Math.round((cur[f] + +n) * 10) / 10); if (cur.ex === "pushup" && f === "kg" && cur.kg > 0) cur.v = 2; drawSheet(); return; }
   if (d.var !== undefined) { cur.v = +d.var; if (cur.v < 2) cur.kg = 0; drawSheet(); return; }
   if (b.id === "sh-log") {
-    const pr = logSet({ t: Date.now(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: cur.ex === "pushup" ? cur.v : 0, gtg: false });
+    const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: cur.ex === "pushup" ? cur.v : 0, gtg: false });
     drawSheet();
     if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`); }
     return;
