@@ -124,3 +124,9 @@ input[type=text] { width: 100%; }
 .quick .qvar button { flex: 1; min-height: 40px; border-radius: 10px; background: none; font-size: 14px; font-weight: 600; color: var(--muted); }
 .quick .qvar button.on { background: var(--accent); color: var(--accent-ink); }
 .quick { align-items: flex-start; }
+/* knee raises: 5th exercise card spans the row; quick boxes wrap two per row; kg stepper */
+.grid .ex:last-child:nth-child(odd) { grid-column: span 2; min-height: 0; gap: 6px; }
+.quick { flex-wrap: wrap; }
+.qbox { flex: 1 1 40%; }
+.qstep.kg span { font-size: 15px; white-space: nowrap; }
+.nw { white-space: nowrap; }

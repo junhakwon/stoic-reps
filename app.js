@@ -7,7 +7,9 @@ const EX = {
   pushup: { name: "Push-ups", one: "push-up", step: 2.5 },
   squat:  { name: "Squats",   one: "squat",   step: 2.5 },
   lunge:  { name: "Lunges",   one: "lunge",   step: 2.5, perLeg: true },
+  kneeraise: { name: "Knee raises", one: "knee raise", step: 2.5 },
 };
+const QUICK_KG = ["pullup", "kneeraise"];   // quick sets that can carry added weight
 const PUSH_VAR = ["Floor", "Feet up", "Backpack"];   // push-up variations, easiest first
 const PULL_VAR = ["Standard", "L-sit"];              // pull-up types; each keeps its own max, records and progression
 const VARS = { pullup: PULL_VAR, pushup: PUSH_VAR };
@@ -21,8 +23,9 @@ function defaults() {
     v: 1,
     settings: {
       theme: "dark",
-      ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12] },
-      gtg: { pullup: 6, pushup: 10 },             // usual grease-the-groove set
+      ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12], kneeraise: [10, 15] },
+      gtg: { pullup: 6, pushup: 10, kneeraise: 10 }, // usual grease-the-groove set
+      gtgKg: { pullup: 0, kneeraise: 0 },          // added kg on the quick set
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
       bodyweight: BODYWEIGHT_DEFAULT,
     },
@@ -44,8 +47,14 @@ function defaults() {
 // ---------- storage ----------
 let S = load();
 function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) return Object.assign(defaults(), JSON.parse(raw)); } catch (e) {}
+  try { const raw = localStorage.getItem(KEY); if (raw) return fillIn(Object.assign(defaults(), JSON.parse(raw))); } catch (e) {}
   return defaults();
+}
+function fillIn(s) {
+  const d = defaults().settings;
+  s.settings = Object.assign({}, d, s.settings);
+  for (const k of ["ranges", "gtg", "gtgKg", "baseline"]) s.settings[k] = Object.assign({}, d[k], s.settings[k]);
+  return s;
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("Could not save on this device", true); } }
 
@@ -190,14 +199,15 @@ function logSet(set) {
   else if (set.kg > 0 && !prior.some(s => s.kg >= set.kg && s.reps >= set.reps)) pr = `${set.reps} × +${fmtKg(set.kg)} kg is a new ${EX[set.ex].one} record.`;
   return pr;
 }
+const gtgKg = ex => QUICK_KG.includes(ex) ? (S.settings.gtgKg[ex] || 0) : 0;
 function gtgWarn(reps, v = gtgV()) { const m = maxBw("pullup", v); return m > 0 && reps > 0.6 * m; }
 function quickSet(ex) {
-  const reps = S.settings.gtg[ex];
+  const reps = S.settings.gtg[ex], kg = gtgKg(ex);
   const v = ex === "pullup" ? gtgV() : 0;
-  const warn = ex === "pullup" && gtgWarn(reps, v), max = maxBw("pullup", v);   // judged on the max before this set
-  const pr = logSet({ t: stamp(), ex, reps, kg: 0, v, gtg: true });
+  const warn = ex === "pullup" && !kg && gtgWarn(reps, v), max = maxBw("pullup", v);   // judged on the max before this set
+  const pr = logSet({ t: stamp(), ex, reps, kg, v, gtg: true });
   if (warn) toast(`Logged ${reps}. That's over 60% of your ${v ? "L-sit " : ""}max (${max}) — keep groove sets easy for your elbows.`, true);
-  else toast(`Logged ${reps} ${v ? "L-sit " : ""}${EX[ex].one}s. Groove greased.`);
+  else toast(`Logged ${reps} ${v ? "L-sit " : ""}${EX[ex].one}s${kg ? ` +${fmtKg(kg)} kg` : ""}. Groove greased.`);
   if (pr) celebrate(pr); else render();
   $("#home-quote") && ($("#home-quote").innerHTML = quoteCard(nextQuote()));
 }
@@ -257,7 +267,7 @@ function homeView() {
       <span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text)}</span>
       <span class="last">${last ? `Last: ${last.reps}${EX[k].perLeg ? "/leg" : ""}${loadText(k, last.kg, last.v)}` : "No sets yet"}</span></button>`;
   }).join("");
-  const gp = S.settings.gtg.pullup, gu = S.settings.gtg.pushup;
+  const g = S.settings.gtg;
   return `<h1>Stoic Reps</h1>
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
     <div class="daybar ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
@@ -270,15 +280,16 @@ function homeView() {
       <button class="pill check ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
     </div>
     <div class="grid">${ex}</div>
-    <div class="quick">${quickBox("pullup", "pull-ups", gp)}${quickBox("pushup", "push-ups", gu)}</div>`;
+    <div class="quick">${quickBox("pullup", "pull-ups", g.pullup)}${quickBox("pushup", "push-ups", g.pushup)}${quickBox("kneeraise", "knee raises", g.kneeraise)}</div>`;
 }
 
 // a quick-set button (tap to log) with − / + underneath to change how many reps it logs
 function quickBox(ex, name, n) {
-  const v = ex === "pullup" ? gtgV() : 0, warn = ex === "pullup" && gtgWarn(n, v);
+  const kg = gtgKg(ex), v = ex === "pullup" ? gtgV() : 0, warn = ex === "pullup" && !kg && gtgWarn(n, v);
+  const kgRow = QUICK_KG.includes(ex) ? `<div class="qstep kg"><button data-gkg="${ex}:-1" aria-label="Less weight" ${kg <= 0 ? "disabled" : ""}>−</button><span>${kg ? "+" + fmtKg(kg) : 0} kg</span><button data-gkg="${ex}:1" aria-label="More weight">+</button></div>` : "";
   const type = ex === "pullup" ? `<div class="qvar">${PULL_VAR.map((t, i) => `<button data-gvar="${i}" class="${i === v ? "on" : ""}">${t}</button>`).join("")}</div>` : "";
-  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${v ? "L-sit " : ""}${name} ×${n}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>${type}
-    <div class="qstep"><button data-gstep="${ex}:-1" aria-label="Fewer ${name}" ${n <= 1 ? "disabled" : ""}>−</button><span>${n}</span><button data-gstep="${ex}:1" aria-label="More ${name}">+</button></div></div>`;
+  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${v ? "L-sit " : ""}${name} ×${n}${kg ? ` <span class="nw">+${fmtKg(kg)} kg</span>` : ""}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>${type}
+    <div class="qstep"><button data-gstep="${ex}:-1" aria-label="Fewer ${name}" ${n <= 1 ? "disabled" : ""}>−</button><span>${n}</span><button data-gstep="${ex}:1" aria-label="More ${name}">+</button></div>${kgRow}</div>`;
 }
 
 // --- charts (inline SVG) ---
@@ -378,10 +389,11 @@ function moreView() {
     <h3>Grease the groove</h3><div class="card">
       <div class="inrow"><label>Quick pull-up set</label><input type="number" inputmode="numeric" data-gtg="pullup" value="${st.gtg.pullup}"></div>
       <div class="inrow"><label>Quick push-up set</label><input type="number" inputmode="numeric" data-gtg="pushup" value="${st.gtg.pushup}"></div>
+      <div class="inrow"><label>Quick knee-raise set</label><input type="number" inputmode="numeric" data-gtg="kneeraise" value="${st.gtg.kneeraise}"></div>
       <p class="muted" style="font-size:14px">Keep groove pull-up sets at or under ${Math.floor(0.6 * maxBw("pullup"))} (60% of your max of ${maxBw("pullup")}).</p></div>
     <h3>Rep ranges</h3><div class="card">
       ${rangeRow("Pull-ups, bodyweight", "pullup.bw", r.pullup.bw)}${rangeRow("Pull-ups, weighted", "pullup.wt", r.pullup.wt)}
-      ${rangeRow("Push-ups", "pushup", r.pushup)}${rangeRow("Squats", "squat", r.squat)}${rangeRow("Lunges (per leg)", "lunge", r.lunge)}</div>
+      ${rangeRow("Push-ups", "pushup", r.pushup)}${rangeRow("Squats", "squat", r.squat)}${rangeRow("Lunges (per leg)", "lunge", r.lunge)}${rangeRow("Knee raises", "kneeraise", r.kneeraise)}</div>
     <h3>Goals</h3><div class="card">${goalRows}
       <div class="inrow" style="flex-wrap:wrap"><select id="g-ex">${Object.keys(EX).map(k => `<option value="${k}">${EX[k].name}</option>`).join("")}</select>
         <input id="g-reps" type="number" inputmode="numeric" placeholder="reps"><input id="g-kg" type="number" inputmode="decimal" placeholder="+kg">
@@ -407,10 +419,12 @@ document.addEventListener("click", e => {
   if (d.gvar !== undefined) { S.settings.gtgVar = Object.assign({}, S.settings.gtgVar, { pullup: +d.gvar }); save(); render(); return; }
   if (d.gstep) { const [ex, n] = d.gstep.split(":"), v = Math.max(1, Math.min(50, S.settings.gtg[ex] + +n));
     if (v === S.settings.gtg[ex]) return;
-    const was = ex === "pullup" && gtgWarn(S.settings.gtg[ex]);
+    const bw = ex === "pullup" && !gtgKg(ex), was = bw && gtgWarn(S.settings.gtg[ex]);
     S.settings.gtg[ex] = v; save(); render();
-    if (ex === "pullup" && gtgWarn(v) && !was) toast(`${v} is over 60% of your ${gtgV() ? "L-sit " : ""}max (${maxBw("pullup", gtgV())}). Groove sets should feel easy.`, true);
+    if (bw && gtgWarn(v) && !was) toast(`${v} is over 60% of your ${gtgV() ? "L-sit " : ""}max (${maxBw("pullup", gtgV())}). Groove sets should feel easy.`, true);
     return; }
+  if (d.gkg) { const [ex, n] = d.gkg.split(":"), kg = Math.max(0, Math.min(100, gtgKg(ex) + EX[ex].step * n));
+    S.settings.gtgKg[ex] = kg; save(); render(); return; }
   if (d.day !== undefined) { const n = +d.day, k = n === 0 ? dayKey() : addDays(curDay(), n);
     logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
   if (d.daily) { const k = curDay(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
@@ -447,7 +461,7 @@ document.addEventListener("change", e => {
     t.files[0].text().then(txt => {
       const j = JSON.parse(txt);
       if (!j || !Array.isArray(j.sets) || !j.settings) throw new Error("not a Stoic Reps backup");
-      S = Object.assign(defaults(), j); save(); toast(`Imported ${S.sets.length} sets`); render();
+      S = fillIn(Object.assign(defaults(), j)); save(); toast(`Imported ${S.sets.length} sets`); render();
     }).catch(err => toast("Import failed: " + err.message, true));
     return;
   }
@@ -458,7 +472,7 @@ document.addEventListener("change", e => {
   }
   if (t.dataset.gtg) {
     const v = parseInt(t.value); if (!(v > 0)) return; S.settings.gtg[t.dataset.gtg] = v; save();
-    if (t.dataset.gtg === "pullup" && gtgWarn(v)) toast(`${v} is over 60% of your max. Groove sets should feel easy.`, true);
+    if (t.dataset.gtg === "pullup" && !gtgKg("pullup") && gtgWarn(v)) toast(`${v} is over 60% of your max. Groove sets should feel easy.`, true);
   }
 });
 $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
