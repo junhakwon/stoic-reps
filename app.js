@@ -464,4 +464,12 @@ document.addEventListener("change", e => {
 $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 
 render();
-if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+// service worker: check for a new version whenever the app comes back to the screen, and reload once it takes over
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  const hadSW = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadSW && !reloaded) { reloaded = true; location.reload(); } });
+}
