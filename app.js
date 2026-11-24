@@ -367,22 +367,67 @@ function goalProgress(g) {
   return { best: b, done: g.done || (!g.manual && b >= g.reps) };
 }
 
-// every day of the last 12 weeks, shaded by how many sets you logged (all exercises)
-function calendar() {
-  const per = {}; for (const s of S.sets) { const k = dayKey(s.t); per[k] = (per[k] || 0) + 1; }
-  const W = 12, C = 22, G = 4, L = 18, today = dayKey(), start = addDays(weekStart(today), -7 * (W - 1)), since = addDays(today, -29);
-  let cells = "", days = 0, creatine = 0;
-  for (let w = 0; w < W; w++) for (let d = 0; d < 7; d++) {
-    const k = addDays(start, w * 7 + d); if (k > today) continue;
-    const n = per[k] || 0, lvl = n === 0 ? 0 : n < 4 ? 1 : n < 8 ? 2 : 3;
-    if (k >= since) { if (n) days++; if ((S.daily[k] || {}).creatine) creatine++; }
-    cells += `<rect x="${L + w * (C + G)}" y="${d * (C + G)}" width="${C}" height="${C}" rx="6" class="hm l${lvl}${k === today ? " now" : ""}"><title>${k}: ${n} set${n === 1 ? "" : "s"}</title></rect>`;
+// ---------- body map: muscles light up in color when trained recently, gray when not ----------
+// regions are polygons in the 182 x 450 pixels of spidey.png (both sides of the body)
+const MUSCLES = {
+  shoulders: { name: "Shoulders", p: ["52,70 40,76 30,93 30,112 43,111 53,97 58,80", "130,70 143,76 151,93 150,112 137,111 126,97 120,80"] },
+  chest:     { name: "Chest", p: ["53,79 70,70 96,70 118,79 122,100 114,120 90,124 78,125 58,120 51,100"] },
+  lats:      { name: "Lats", p: ["44,100 56,104 57,150 50,152 46,130", "124,100 113,104 112,150 119,152 122,130"] },
+  arms:      { name: "Biceps & triceps", p: ["31,110 45,108 47,130 41,156 25,156 25,130", "137,108 151,110 157,130 159,156 144,156 138,130"] },
+  forearms:  { name: "Forearms & grip", p: ["24,152 42,152 36,180 24,213 6,213 12,180", "141,152 160,152 166,180 175,213 158,213 150,180"] },
+  core:      { name: "Abs & core", p: ["58,124 112,124 115,150 112,190 95,197 70,197 56,190 54,150"] },
+  quads:     { name: "Quads", p: ["42,228 86,232 82,268 72,305 64,323 36,323 36,290 40,255", "95,232 130,228 134,260 140,295 143,323 120,323 112,290 100,262"] },
+  calves:    { name: "Calves", p: ["36,328 60,328 56,360 52,400 40,402 33,365", "124,328 146,328 150,360 152,400 138,402 130,365"] },
+};
+const HEAD = "68,8 100,8 106,40 99,64 84,70 70,63 65,40";   // the mask always keeps its color
+const MUSCLE_OF = { pullup: ["lats", "arms", "forearms"], pushup: ["chest", "shoulders", "arms"], squat: ["quads"],
+  lunge: ["quads", "calves"], kneeraise: ["core", "forearms"] };
+const musclesOf = s => (MUSCLE_OF[s.ex] || []).concat(s.ex === "pullup" && s.v === 1 ? ["core"] : []);   // L-sit adds core
+const glow = d => d <= 1 ? 1 : d === 2 ? .8 : d === 3 ? .6 : d <= 6 ? .35 : 0;   // days since trained -> color strength
+function muscleState() {
+  const last = {}, by = {}, today = dayKey();
+  for (const s of S.sets) { const k = dayKey(s.t); for (const m of musclesOf(s)) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = s.ex; } }
+  const st = {};
+  for (const m in MUSCLES) {
+    const d = last[m] ? Math.round((keyToDate(today) - keyToDate(last[m])) / 864e5) : null;
+    st[m] = { d, g: d === null ? 0 : glow(d), ex: by[m] };
   }
-  const lab = ["M", "", "W", "", "F", "", "S"].map((t, d) => t ? `<text x="0" y="${d * (C + G) + 16}" font-size="11" fill="var(--muted)">${t}</text>` : "").join("");
-  const w = L + W * (C + G) - G, h = 7 * (C + G) - G;
-  return `<h3>Last 12 weeks</h3><div class="card"><svg class="chart hmap" viewBox="0 0 ${w} ${h}" role="img" aria-label="Training calendar: ${days} training days in the last 30">${lab}${cells}</svg>
-    <div class="hm-foot"><span><b>${days}</b> training day${days === 1 ? "" : "s"} · <b>${creatine}</b> creatine day${creatine === 1 ? "" : "s"} <span class="muted">(last 30)</span></span>
-    <span class="hm-key" aria-hidden="true">less<i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i>more</span></div></div>`;
+  return st;
+}
+const agoText = d => d === null ? "not yet" : d === 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`;
+function bodyMap() {
+  const st = muscleState(), today = dayKey(), since = addDays(today, -29);
+  let days = 0, creatine = 0;
+  const trained = new Set(S.sets.map(s => dayKey(s.t)));
+  for (let k = since; k <= today; k = addDays(k, 1)) { if (trained.has(k)) days++; if ((S.daily[k] || {}).creatine) creatine++; }
+  const lit = Object.keys(MUSCLES).filter(m => st[m].g > 0);
+  const mask = lit.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" fill="#fff" fill-opacity="${st[m].g}"/>`).join("")).join("");
+  const hits = Object.keys(MUSCLES).map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" data-muscle="${m}"/>`).join("")).join("");
+  const rows = Object.keys(MUSCLES).map(m => `<button class="mrow ${st[m].g ? "" : "off"}" data-muscle="${m}">
+      <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}</small></button>`).join("");
+  return `<h3>This week's body</h3><div class="card"><div class="bodymap">
+    <svg class="body" viewBox="0 0 182 450" role="img" aria-label="Trained in the last week: ${lit.map(m => MUSCLES[m].name).join(", ") || "nothing yet"}">
+      <defs>
+        <filter id="bm-gray" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/>
+          <feComponentTransfer><feFuncR type="linear" slope=".48" intercept=".06"/><feFuncG type="linear" slope=".48" intercept=".06"/><feFuncB type="linear" slope=".48" intercept=".07"/></feComponentTransfer></filter>
+        <filter id="bm-pop" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="1.8" result="s"/>
+          <feFlood flood-color="#ff5a2e" flood-opacity=".35"/><feComposite in2="SourceAlpha" operator="in" result="t"/><feBlend in="t" in2="s" mode="multiply"/></filter>
+        <filter id="bm-soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.2"/></filter>
+        <mask id="bm-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><g filter="url(#bm-soft)">${mask}</g></mask>
+        <mask id="bm-head" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><polygon points="${HEAD}" fill="#fff" filter="url(#bm-soft)"/></mask>
+      </defs>
+      <image href="spidey.png" width="182" height="450" filter="url(#bm-gray)"/>
+      <image href="spidey.png" width="182" height="450" filter="url(#bm-pop)" mask="url(#bm-mask)"/>
+      <image href="spidey.png" width="182" height="450" mask="url(#bm-head)"/>
+      <g class="hit">${hits}</g></svg>
+    <div class="mlist">${rows}</div></div>
+    <div class="hm-foot"><span><b>${days}</b> training day${days === 1 ? "" : "s"} · <b>${creatine}</b> creatine day${creatine === 1 ? "" : "s"} <span class="muted">(last 30)</span></span></div></div>`;
+}
+function muscleInfo(m) {
+  const s = muscleState()[m], how = Object.keys(MUSCLE_OF).filter(ex => MUSCLE_OF[ex].includes(m)).map(ex => EX[ex].name.toLowerCase());
+  if (m === "core") how.push("L-sit pull-ups");
+  toast(s.d === null ? `${MUSCLES[m].name}: not trained yet. Try ${how.join(" or ")}.`
+    : `${MUSCLES[m].name}: last trained ${agoText(s.d)} (${EX[s.ex].name.toLowerCase()}).${s.g ? "" : " Gone gray — time for " + how.join(" or ") + "."}`);
 }
 
 function progressView() {
@@ -422,7 +467,7 @@ function progressView() {
       <div class="bar"><i style="width:${p.done ? 100 : pct}%"></i></div></div>
       ${g.manual ? `<button data-goal-done="${g.id}">${g.done ? "↺" : "✓"}</button>` : ""}</div>`;
   }).join("");
-  return `<h1>Progress</h1>${calendar()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
+  return `<h1>Progress</h1>${bodyMap()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
     <h3>Best set by day</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
     <h3>Total reps per week</h3><div class="card">${barChart(weeks)}</div>
@@ -470,8 +515,9 @@ function moreView() {
 
 // ---------- events ----------
 document.addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
+  const b = e.target.closest("button, [data-muscle]"); if (!b) return;
   const d = b.dataset;
+  if (d.muscle) { muscleInfo(d.muscle); return; }
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
