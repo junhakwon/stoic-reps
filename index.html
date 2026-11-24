@@ -16,7 +16,7 @@
 <body>
 <main id="view"></main>
 
-<nav class="tabs">
+<nav class="tabs" aria-label="Sections">
   <button data-tab="home" class="on">Train</button>
   <button data-tab="progress">Progress</button>
   <button data-tab="more">More</button>
@@ -24,13 +24,13 @@
 
 <!-- log sheet: opens from an exercise button -->
 <div id="sheet" class="sheet" hidden>
-  <div class="sheet-card">
-    <div class="sheet-head"><h2 id="sh-title"></h2><button class="x" data-close>×</button></div>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sh-title">
+    <div class="sheet-head"><h2 id="sh-title"></h2><button class="x" data-close aria-label="Close">×</button></div>
     <p id="sh-next" class="next"></p>
     <div class="field"><label>Reps <span id="sh-per"></span></label>
-      <div class="stepper"><button data-step="reps:-1">−</button><output id="sh-reps"></output><button data-step="reps:1">+</button></div></div>
+      <div class="stepper"><button data-step="reps:-1" aria-label="Fewer reps">−</button><output id="sh-reps" aria-live="polite"></output><button data-step="reps:1" aria-label="More reps">+</button></div></div>
     <div class="field"><label>Added weight (kg) <span class="hint">0 = bodyweight</span></label>
-      <div class="stepper"><button data-step="kg:-2.5">−</button><output id="sh-kg"></output><button data-step="kg:2.5">+</button></div></div>
+      <div class="stepper"><button data-step="kg:-2.5" aria-label="Less weight">−</button><output id="sh-kg" aria-live="polite"></output><button data-step="kg:2.5" aria-label="More weight">+</button></div></div>
     <div id="sh-var" class="field" hidden><label>Push-up variation</label><div class="seg" id="sh-var-seg"></div></div>
     <button id="sh-log" class="big primary">Log set</button>
     <div id="sh-today" class="today-sets"></div>
@@ -38,8 +38,8 @@
   </div>
 </div>
 
-<div id="modal" class="sheet" hidden><div class="sheet-card" id="modal-body"></div></div>
-<div id="toast" class="toast" hidden></div>
+<div id="modal" class="sheet" hidden><div class="sheet-card" id="modal-body" role="dialog" aria-modal="true" aria-label="New record"></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="quotes.js"></script>
 <script src="app.js"></script>
