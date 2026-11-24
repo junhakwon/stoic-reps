@@ -26,6 +26,7 @@ function defaults() {
       ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12], kneeraise: [10, 15] },
       gtg: { pullup: 6, pushup: 10, kneeraise: 10 }, // usual grease-the-groove set
       gtgKg: { pullup: 0, kneeraise: 0 },          // added kg on the quick set
+      rest: { bw: 120, wt: 180 },                  // rest timer after a working set, seconds (0 = off)
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
       bodyweight: BODYWEIGHT_DEFAULT,
     },
@@ -53,7 +54,7 @@ function load() {
 function fillIn(s) {
   const d = defaults().settings;
   s.settings = Object.assign({}, d, s.settings);
-  for (const k of ["ranges", "gtg", "gtgKg", "baseline"]) s.settings[k] = Object.assign({}, d[k], s.settings[k]);
+  for (const k of ["ranges", "gtg", "gtgKg", "rest", "baseline"]) s.settings[k] = Object.assign({}, d[k], s.settings[k]);
   return s;
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("Could not save on this device", true); } }
@@ -189,10 +190,11 @@ function weekReps(ex, wk) {
 }
 
 // ---------- logging ----------
+let lastSet = null;   // the set the "Undo" button removes
 function logSet(set) {
   const pv = set.ex === "pullup" ? (set.v || 0) : 0, prBw = maxBw(set.ex, pv);
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
-  S.sets.push(set); save();
+  S.sets.push(set); lastSet = set; save();
   // records
   let pr = null;
   if (!set.kg && (set.v || 0) === pv && set.reps > prBw) pr = `${set.reps} ${pv ? "L-sit " : ""}${EX[set.ex].one}s unbroken. Your best ever.`;
@@ -206,15 +208,17 @@ function quickSet(ex) {
   const v = ex === "pullup" ? gtgV() : 0;
   const warn = ex === "pullup" && !kg && gtgWarn(reps, v), max = maxBw("pullup", v);   // judged on the max before this set
   const pr = logSet({ t: stamp(), ex, reps, kg, v, gtg: true });
-  if (warn) toast(`Logged ${reps}. That's over 60% of your ${v ? "L-sit " : ""}max (${max}) — keep groove sets easy for your elbows.`, true);
-  else toast(`Logged ${reps} ${v ? "L-sit " : ""}${EX[ex].one}s${kg ? ` +${fmtKg(kg)} kg` : ""}. Groove greased.`);
+  if (warn) toast(`Logged ${reps}. That's over 60% of your ${v ? "L-sit " : ""}max (${max}) — keep groove sets easy for your elbows.`, true, true);
+  else toast(`Logged ${reps} ${v ? "L-sit " : ""}${EX[ex].one}s${kg ? ` +${fmtKg(kg)} kg` : ""}. Groove greased.`, false, true);
   if (pr) celebrate(pr); else render();
   $("#home-quote") && ($("#home-quote").innerHTML = quoteCard(nextQuote()));
 }
 
 // ---------- log sheet ----------
 let cur = null;   // { ex, reps, kg, v }
+let pendingDel = null;   // index in S.sets of the set chip waiting for a second tap
 function openSheet(ex) {
+  pendingDel = null;
   const sg = suggest(ex, true), last = setsOf(ex).filter(s => !s.gtg).pop();
   const sameLoad = last && (last.kg || 0) === sg.kg && (last.v || 0) === sg.v;
   cur = { ex, reps: sameLoad ? last.reps : sg.reps, kg: sg.kg, v: sg.v };
@@ -230,8 +234,8 @@ function drawSheet() {
   $("#sh-reps").textContent = cur.reps;
   $("#sh-kg").textContent = cur.kg ? "+" + fmtKg(cur.kg) : "0";
   if (VARS[cur.ex]) $("#sh-var-seg").innerHTML = VARS[cur.ex].map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
-  const today = setsOf(cur.ex).filter(s => dayKey(s.t) === curDay());
-  $("#sh-today").innerHTML = today.length ? today.map(s => `<span class="${s.gtg ? "gtg" : ""}">${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}</span>`).join("") : `<span class="muted" style="background:none;padding:0">No sets yet ${logDay ? "that day" : "today"}</span>`;
+  const today = S.sets.map((s, i) => [s, i]).filter(([s]) => s.ex === cur.ex && dayKey(s.t) === curDay());
+  $("#sh-today").innerHTML = today.length ? today.map(([s, i]) => `<button data-del-set="${i}" class="${s.gtg ? "gtg" : ""} ${pendingDel === i ? "del" : ""}" aria-label="${pendingDel === i ? "Tap again to remove this set" : "Set of " + s.reps + ", tap to remove"}">${pendingDel === i ? "Remove?" : `${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}`}</button>`).join("") + '<span class="muted tip">tap a set to remove it</span>' : `<span class="muted" style="background:none;padding:0">No sets yet ${logDay ? "that day" : "today"}</span>`;
 }
 function closeSheet() { $("#sheet").hidden = true; cur = null; render(); }
 
@@ -246,10 +250,44 @@ function celebrate(msg) {
 
 // ---------- toast ----------
 let toastT = 0;
-function toast(msg, warn) {
-  const t = $("#toast"); t.textContent = msg; t.className = "toast" + (warn ? " warn" : ""); t.hidden = false;
-  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, warn ? 5000 : 2200);
+function toast(msg, warn, undo) {
+  const t = $("#toast"); t.className = "toast" + (warn ? " warn" : "") + (undo ? " has-undo" : ""); t.hidden = false;
+  t.innerHTML = `<span>${esc(msg)}</span>${undo ? '<button data-undo>Undo</button>' : ""}`;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, warn || undo ? 5000 : 2200);
 }
+function undoLast() {
+  const i = S.sets.indexOf(lastSet); lastSet = null;
+  if (i < 0) return;
+  S.sets.splice(i, 1); save(); stopRest(); pendingDel = null;
+  if (cur) drawSheet(); else render();
+  toast("Set removed");
+}
+
+// ---------- rest timer: counts down after a working set; beeps (and buzzes where the phone allows) at zero ----------
+let rest = null, restT = 0, beepCtx = null;
+function unlockBeep() {   // iPhone only plays sound from a context first touched during a tap
+  try { beepCtx = beepCtx || new (window.AudioContext || window.webkitAudioContext)(); if (beepCtx.state === "suspended") beepCtx.resume(); } catch (e) {}
+}
+function startRest(sec) { if (!(sec > 0)) return; rest = { end: Date.now() + sec * 1000 }; clearInterval(restT); restT = setInterval(tickRest, 250); tickRest(); }
+function stopRest() { rest = null; clearInterval(restT); $("#rest").hidden = true; }
+function tickRest() {
+  if (!rest) return;
+  const left = Math.ceil((rest.end - Date.now()) / 1000);
+  if (left <= 0) { stopRest(); restDone(); return; }
+  $("#rest").hidden = false; $("#rest-t").textContent = `${Math.floor(left / 60)}:${pad(left % 60)}`;
+}
+function restDone() {
+  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+  try {
+    if (beepCtx) for (const at of [0, .25]) {
+      const o = beepCtx.createOscillator(), g = beepCtx.createGain(), t0 = beepCtx.currentTime + at;
+      o.frequency.value = 880; g.gain.setValueAtTime(.3, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + .2);
+      o.connect(g); g.connect(beepCtx.destination); o.start(t0); o.stop(t0 + .2);
+    }
+  } catch (e) {}
+  toast("Rest over. Next set when you're ready.");
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) tickRest(); });
 
 // ---------- screens ----------
 let tab = "home", progEx = "pullup";
@@ -329,6 +367,24 @@ function goalProgress(g) {
   return { best: b, done: g.done || (!g.manual && b >= g.reps) };
 }
 
+// every day of the last 12 weeks, shaded by how many sets you logged (all exercises)
+function calendar() {
+  const per = {}; for (const s of S.sets) { const k = dayKey(s.t); per[k] = (per[k] || 0) + 1; }
+  const W = 12, C = 22, G = 4, L = 18, today = dayKey(), start = addDays(weekStart(today), -7 * (W - 1)), since = addDays(today, -29);
+  let cells = "", days = 0, creatine = 0;
+  for (let w = 0; w < W; w++) for (let d = 0; d < 7; d++) {
+    const k = addDays(start, w * 7 + d); if (k > today) continue;
+    const n = per[k] || 0, lvl = n === 0 ? 0 : n < 4 ? 1 : n < 8 ? 2 : 3;
+    if (k >= since) { if (n) days++; if ((S.daily[k] || {}).creatine) creatine++; }
+    cells += `<rect x="${L + w * (C + G)}" y="${d * (C + G)}" width="${C}" height="${C}" rx="6" class="hm l${lvl}${k === today ? " now" : ""}"><title>${k}: ${n} set${n === 1 ? "" : "s"}</title></rect>`;
+  }
+  const lab = ["M", "", "W", "", "F", "", "S"].map((t, d) => t ? `<text x="0" y="${d * (C + G) + 16}" font-size="11" fill="var(--muted)">${t}</text>` : "").join("");
+  const w = L + W * (C + G) - G, h = 7 * (C + G) - G;
+  return `<h3>Last 12 weeks</h3><div class="card"><svg class="chart hmap" viewBox="0 0 ${w} ${h}" role="img" aria-label="Training calendar: ${days} training days in the last 30">${lab}${cells}</svg>
+    <div class="hm-foot"><span><b>${days}</b> training day${days === 1 ? "" : "s"} · <b>${creatine}</b> creatine day${creatine === 1 ? "" : "s"} <span class="muted">(last 30)</span></span>
+    <span class="hm-key" aria-hidden="true">less<i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i>more</span></div></div>`;
+}
+
 function progressView() {
   const ex = progEx, all = setsOf(ex);
   const chips = Object.keys(EX).map(k => `<button data-prog="${k}" class="${k === ex ? "on" : ""}">${EX[k].name}</button>`).join("");
@@ -366,7 +422,7 @@ function progressView() {
       <div class="bar"><i style="width:${p.done ? 100 : pct}%"></i></div></div>
       ${g.manual ? `<button data-goal-done="${g.id}">${g.done ? "↺" : "✓"}</button>` : ""}</div>`;
   }).join("");
-  return `<h1>Progress</h1><div class="chips">${chips}</div>${stats}
+  return `<h1>Progress</h1>${calendar()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
     <h3>Best set by day</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
     <h3>Total reps per week</h3><div class="card">${barChart(weeks)}</div>
@@ -391,6 +447,10 @@ function moreView() {
       <div class="inrow"><label>Quick push-up set</label><input type="number" inputmode="numeric" data-gtg="pushup" value="${st.gtg.pushup}"></div>
       <div class="inrow"><label>Quick knee-raise set</label><input type="number" inputmode="numeric" data-gtg="kneeraise" value="${st.gtg.kneeraise}"></div>
       <p class="muted" style="font-size:14px">Keep groove pull-up sets at or under ${Math.floor(0.6 * maxBw("pullup"))} (60% of your max of ${maxBw("pullup")}).</p></div>
+    <h3>Rest timer</h3><div class="card">
+      <div class="inrow"><label>After a bodyweight set (sec)</label><input type="number" inputmode="numeric" data-rest-set="bw" value="${st.rest.bw}"></div>
+      <div class="inrow"><label>After a weighted set (sec)</label><input type="number" inputmode="numeric" data-rest-set="wt" value="${st.rest.wt}"></div>
+      <p class="muted" style="font-size:14px">Starts when you log a set from an exercise card. 0 turns it off.</p></div>
     <h3>Rep ranges</h3><div class="card">
       ${rangeRow("Pull-ups, bodyweight", "pullup.bw", r.pullup.bw)}${rangeRow("Pull-ups, weighted", "pullup.wt", r.pullup.wt)}
       ${rangeRow("Push-ups", "pushup", r.pushup)}${rangeRow("Squats", "squat", r.squat)}${rangeRow("Lunges (per leg)", "lunge", r.lunge)}${rangeRow("Knee raises", "kneeraise", r.kneeraise)}</div>
@@ -432,10 +492,17 @@ document.addEventListener("click", e => {
   if (d.closeModal !== undefined) { $("#modal").hidden = true; render(); return; }
   if (d.step) { const [f, n] = d.step.split(":"); cur[f] = Math.max(f === "reps" ? 1 : 0, Math.round((cur[f] + +n) * 10) / 10); if (cur.ex === "pushup" && f === "kg" && cur.kg > 0) cur.v = 2; drawSheet(); return; }
   if (d.var !== undefined) { cur.v = +d.var; if (cur.ex === "pushup" && cur.v < 2) cur.kg = 0; drawSheet(); return; }
+  if (d.undo !== undefined) { undoLast(); return; }
+  if (d.rest !== undefined) { if (rest && +d.rest) { rest.end += +d.rest * 1000; tickRest(); } else stopRest(); return; }
+  if (d.delSet !== undefined) { const i = +d.delSet;
+    if (pendingDel === i) { S.sets.splice(i, 1); pendingDel = null; save(); toast("Set removed"); } else pendingDel = i;
+    drawSheet(); return; }
   if (b.id === "sh-log") {
+    unlockBeep(); pendingDel = null;
     const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: VARS[cur.ex] ? cur.v : 0, gtg: false });
     drawSheet();
-    if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`); }
+    if (!logDay) startRest(S.settings.rest[cur.kg > 0 ? "wt" : "bw"]);
+    if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`, false, true); }
     return;
   }
   if (d.prog) { progEx = d.prog; render(); return; }
@@ -470,6 +537,7 @@ document.addEventListener("change", e => {
     const [ex, sub] = key.split("."); const arr = sub ? S.settings.ranges[ex][sub] : S.settings.ranges[ex];
     arr[+i] = v; if (arr[0] > arr[1]) arr.reverse(); save(); return;
   }
+  if (t.dataset.restSet) { const v = parseInt(t.value); if (v >= 0 && v <= 900) { S.settings.rest[t.dataset.restSet] = v; save(); } return; }
   if (t.dataset.gtg) {
     const v = parseInt(t.value); if (!(v > 0)) return; S.settings.gtg[t.dataset.gtg] = v; save();
     if (t.dataset.gtg === "pullup" && !gtgKg("pullup") && gtgWarn(v)) toast(`${v} is over 60% of your max. Groove sets should feel easy.`, true);

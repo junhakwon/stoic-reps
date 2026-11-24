@@ -155,3 +155,29 @@ button:disabled { cursor: default; }
 .daybar button { border-radius: 10px; }
 .link { padding: 10px 2px; margin: -10px 0; }
 .quote .fav:active { transform: scale(.85); }
+
+/* rest timer, undo toast, removable set chips, training calendar */
+.rest { position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top) + 10px);
+  display: flex; align-items: center; gap: 8px; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 6px 6px 6px 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 8px 24px rgba(0,0,0,.3); animation: toast-in 180ms ease-out; }
+.rest[hidden] { display: none; }
+.rest span { font-weight: 600; }
+.rest b { font-size: 22px; font-variant-numeric: tabular-nums; min-width: 3.2ch; text-align: center; }
+.rest button { min-height: 44px; border-radius: 999px; padding: 0 14px; background: rgba(0,0,0,.18); color: inherit; font-weight: 700; font-size: 15px; }
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast[hidden] { display: none; }
+.toast span { flex: 1; }
+.toast button { flex: none; min-height: 40px; padding: 0 16px; border-radius: 10px; background: rgba(127,127,127,.25); color: inherit; font-weight: 800; }
+.today-sets button { background: var(--card2); border-radius: 10px; padding: 8px 12px; font-size: 14px; min-height: 40px; font-variant-numeric: tabular-nums; }
+.today-sets button.gtg { opacity: .75; }
+.today-sets button.del { background: var(--warn); color: #1a1408; font-weight: 700; opacity: 1; }
+.today-sets .tip { font-size: 12px; align-self: center; margin-left: 2px; }
+.hmap { margin: 2px 0 10px; }
+.hm, .hm-key i { fill: var(--card2); background: var(--card2); }
+.hm.l1, .hm-key i.l1 { fill: color-mix(in srgb, var(--accent) 35%, var(--card2)); background: color-mix(in srgb, var(--accent) 35%, var(--card2)); }
+.hm.l2, .hm-key i.l2 { fill: color-mix(in srgb, var(--accent) 68%, var(--card2)); background: color-mix(in srgb, var(--accent) 68%, var(--card2)); }
+.hm.l3, .hm-key i.l3 { fill: var(--accent); background: var(--accent); }
+.hm.now { stroke: var(--text); stroke-width: 2; }
+.hm-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.hm-key { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--muted); }
+.hm-key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }

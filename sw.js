@@ -1,6 +1,6 @@
 // Offline support. Online, every app file comes from the network (so updates show up right away) and the copy is
 // kept for offline use; offline, the kept copy is used. Bump VERSION when any file changes so phones pick it up.
-const VERSION = "stoicreps-7";
+const VERSION = "stoicreps-8";
 const FILES = ["./", "index.html", "style.css", "app.js", "quotes.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 self.addEventListener("install", e => {
