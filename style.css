@@ -250,12 +250,13 @@ svg.body.mini { width: 31%; max-width: 130px; height: auto; flex: none; }
 
 /* the living figure */
 svg.body.live .fig { transform-box: view-box; }
-svg.body.live .breath { transform-origin: 91px 235px; animation: bm-breath 4.2s ease-in-out infinite alternate; }
+/* breathing grows the body up from the feet; the arms ride up with the shoulders (6.4px) and swing out */
+svg.body.live .breath { transform-origin: 91px 440px; animation: bm-breath 4.2s ease-in-out infinite alternate; }
 svg.body.live .al { transform-origin: 44px 84px; animation: bm-arm-l 4.2s ease-in-out infinite alternate; }
 svg.body.live .ar { transform-origin: 138px 84px; animation: bm-arm-r 4.2s ease-in-out infinite alternate; }
-@keyframes bm-breath { to { transform: scale(1.008, 1.012); } }
-@keyframes bm-arm-l { to { transform: translateY(-1.7px) rotate(1.4deg); } }
-@keyframes bm-arm-r { to { transform: translateY(-1.7px) rotate(-1.4deg); } }
+@keyframes bm-breath { to { transform: scale(1.014, 1.018); } }
+@keyframes bm-arm-l { to { transform: translate(-.7px, -6.4px) rotate(2.6deg); } }
+@keyframes bm-arm-r { to { transform: translate(.7px, -6.4px) rotate(-2.6deg); } }
 svg.body .aura { transform-box: fill-box; transform-origin: center; animation: bm-aura 4.2s ease-in-out infinite alternate; }
 @keyframes bm-aura { from { transform: scale(.94); } to { transform: scale(1.05); } }
 svg.body .flash polygon { fill: #ffc070; }
