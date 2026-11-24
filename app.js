@@ -26,7 +26,8 @@ function defaults() {
       ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12], kneeraise: [10, 15] },
       gtg: { pullup: 6, pushup: 10, kneeraise: 10 }, // usual grease-the-groove set
       gtgKg: { pullup: 0, kneeraise: 0 },          // added kg on the quick set
-      rest: { bw: 120, wt: 180 },                  // rest timer after a working set, seconds (0 = off)
+      rest: { bw: 120, wt: 180 },
+      quickEx: "pullup",                           // exercise picked in the quick-add bar                  // rest timer after a working set, seconds (0 = off)
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
       bodyweight: BODYWEIGHT_DEFAULT,
     },
@@ -185,6 +186,18 @@ function streak() {
   let n = 0; while (days.has(k)) { n++; k = addDays(k, -1); }
   return n;
 }
+function bestStreak() {
+  const days = [...new Set(S.sets.map(s => dayKey(s.t)))].sort();
+  let best = 0, run = 0, prev = null;
+  for (const k of days) { run = prev && addDays(prev, 1) === k ? run + 1 : 1; best = Math.max(best, run); prev = k; }
+  return best;
+}
+// Stoic ranks earned by an unbroken run of training days
+const RANKS = [[0, "Beginner"], [3, "Initiate"], [7, "Student"], [14, "Practitioner"], [30, "Disciple"], [60, "Stoic"], [100, "Philosopher"], [180, "Sage"], [365, "Marcus"]];
+function rankOf(n) {
+  let i = 0; while (i + 1 < RANKS.length && n >= RANKS[i + 1][0]) i++;
+  return { name: RANKS[i][1], from: RANKS[i][0], next: RANKS[i + 1] || null };
+}
 function weekReps(ex, wk) {
   return setsOf(ex).filter(s => weekStart(dayKey(s.t)) === wk).reduce((a, s) => a + s.reps, 0);
 }
@@ -298,36 +311,53 @@ function render() {
 }
 
 function homeView() {
-  const d = curDay(), daily = S.daily[d] || {};
-  const ex = Object.keys(EX).map(k => {
-    const sg = suggest(k), last = setsOf(k).filter(s => !s.gtg).pop();
-    return `<button class="ex" data-ex="${k}"><span class="name">${EX[k].name}</span>
-      <span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text)}</span>
-      <span class="last">${last ? `Last: ${last.reps}${EX[k].perLeg ? "/leg" : ""}${loadText(k, last.kg, last.v)}` : "No sets yet"}</span></button>`;
+  const d = curDay(), daily = S.daily[d] || {}, st = muscleState();
+  const rows = Object.keys(EX).map(k => {
+    const sg = suggest(k), g = st[MUSCLE_OF[k][0]].g;   // the main muscle it trains
+    return `<button class="exrow" data-ex="${k}"><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
+      <span class="t"><b>${EX[k].name}</b><span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text.replace(/^Next: /, "Next "))}</span></span>
+      <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
   }).join("");
-  const g = S.settings.gtg;
-  return `<h1>Stoic Reps</h1>
-    <div id="home-quote">${quoteCard(quoteOfDay())}</div>
-    <div class="daybar ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
-      <span>${logDay ? "Logging for " : ""}<b>${dayLabel(d)}</b></span>
-      <button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div>
+  return `<div class="hdr"><h1>Stoic Reps</h1>
+      <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
+        <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
-    <div class="row">
-      <div class="pill"><b>${streak()}</b><span class="muted">day streak</span></div>
-      <button class="pill check ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
-      <button class="pill check ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
-    </div>
-    <div class="grid">${ex}</div>
-    <div class="quick">${quickBox("pullup", "pull-ups", g.pullup)}${quickBox("pushup", "push-ups", g.pushup)}${quickBox("kneeraise", "knee raises", g.kneeraise)}</div>`;
+    <div class="card hero">${bodySvg(st, "mini")}
+      <div class="side">${streakCard()}
+        <button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
+        <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
+        <p class="hint">${nextHint(st)}</p></div></div>
+    <div id="home-quote">${quoteCard(quoteOfDay())}</div>
+    <div class="card list">${rows}</div>
+    ${quickBar()}`;
 }
 
-// a quick-set button (tap to log) with − / + underneath to change how many reps it logs
-function quickBox(ex, name, n) {
-  const kg = gtgKg(ex), v = ex === "pullup" ? gtgV() : 0, warn = ex === "pullup" && !kg && gtgWarn(n, v);
-  const kgRow = QUICK_KG.includes(ex) ? `<div class="qstep kg"><button data-gkg="${ex}:-1" aria-label="Less weight" ${kg <= 0 ? "disabled" : ""}>−</button><span>${kg ? "+" + fmtKg(kg) : 0} kg</span><button data-gkg="${ex}:1" aria-label="More weight">+</button></div>` : "";
-  const type = ex === "pullup" ? `<div class="qvar">${PULL_VAR.map((t, i) => `<button data-gvar="${i}" class="${i === v ? "on" : ""}">${t}</button>`).join("")}</div>` : "";
-  return `<div class="qbox"><button data-quick="${ex}" class="${warn ? "warn" : ""}">Quick ${v ? "L-sit " : ""}${name} ×${n}${kg ? ` <span class="nw">+${fmtKg(kg)} kg</span>` : ""}<small>${warn ? "over 60% of max" : "grease the groove"}</small></button>${type}
-    <div class="qstep"><button data-gstep="${ex}:-1" aria-label="Fewer ${name}" ${n <= 1 ? "disabled" : ""}>−</button><span>${n}</span><button data-gstep="${ex}:1" aria-label="More ${name}">+</button></div>${kgRow}</div>`;
+// streak: number, Stoic rank, the last 7 days, progress to the next rank
+function streakCard() {
+  const n = streak(), best = bestStreak(), r = rankOf(n), today = dayKey(), done = S.sets.some(s => dayKey(s.t) === today);
+  const days = new Set(S.sets.map(s => dayKey(s.t)));
+  const dots = [6, 5, 4, 3, 2, 1, 0].map(i => { const k = addDays(today, -i), on = days.has(k);
+    return `<span class="sd ${on ? "on" : ""} ${i === 0 ? "now" : ""}" title="${k}"><i></i>${WD[keyToDate(k).getDay()][0]}</span>`; }).join("");
+  const pct = r.next ? Math.round(100 * (n - r.from) / (r.next[0] - r.from)) : 100;
+  const line = !n ? "Log a set to start a streak."
+    : done ? (r.next ? `${r.next[0] - n} more day${r.next[0] - n === 1 ? "" : "s"} to <b>${r.next[1]}</b>` : "The highest rank. Keep going.")
+    : `<span class="risk">Train today to make it ${n + 1}.</span>`;
+  return `<div class="streak"><div class="sn"><b>${n}</b><span>day streak<br><em>${r.name}</em></span></div>
+    <div class="sdots" aria-label="Trained ${[...Array(7)].filter((_, i) => days.has(addDays(today, -i))).length} of the last 7 days">${dots}</div>
+    <div class="sbar"><i style="width:${pct}%"></i></div><p class="sline">${line}${best > n ? ` · best ${best}` : ""}</p></div>`;
+}
+
+// one bar for grease-the-groove sets: pick the exercise, set reps (and kg / pull-up type), Add
+function quickBar() {
+  const ex = S.settings.quickEx || "pullup", n = S.settings.gtg[ex], kg = gtgKg(ex), v = ex === "pullup" ? gtgV() : 0;
+  const warn = ex === "pullup" && !kg && gtgWarn(n, v), one = EX[ex].one + (n === 1 ? "" : "s");
+  return `<div class="card qbar"><div class="qhead"><span>Quick groove set</span>
+      ${ex === "pullup" ? `<span class="qtype">${PULL_VAR.map((t, i) => `<button data-gvar="${i}" class="${i === v ? "on" : ""}">${t}</button>`).join("")}</span>` : ""}</div>
+    <div class="qseg">${["pullup", "pushup", "kneeraise"].map(e => `<button data-qex="${e}" class="${e === ex ? "on" : ""}">${EX[e].name}</button>`).join("")}</div>
+    <div class="qrow"><div class="qst"><button data-gstep="${ex}:-1" aria-label="Fewer reps" ${n <= 1 ? "disabled" : ""}>−</button><b>${n}</b><button data-gstep="${ex}:1" aria-label="More reps">+</button><small>reps</small></div>
+      ${QUICK_KG.includes(ex) ? `<div class="qst"><button data-gkg="${ex}:-1" aria-label="Less weight" ${kg <= 0 ? "disabled" : ""}>−</button><b>${kg ? "+" + fmtKg(kg) : 0}</b><button data-gkg="${ex}:1" aria-label="More weight">+</button><small>kg</small></div>` : ""}</div>
+    <button class="qadd ${warn ? "warn" : ""}" data-quick="${ex}">Add ${n} ${v ? "L-sit " : ""}${one}${kg ? ` +${fmtKg(kg)} kg` : ""}</button>
+    ${warn ? `<p class="qwarn">That's over 60% of your max — groove sets should feel easy.</p>` : ""}</div>`;
 }
 
 // --- charts (inline SVG) ---
@@ -395,18 +425,11 @@ function muscleState() {
   return st;
 }
 const agoText = d => d === null ? "not yet" : d === 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`;
-function bodyMap() {
-  const st = muscleState(), today = dayKey(), since = addDays(today, -29);
-  let days = 0, creatine = 0;
-  const trained = new Set(S.sets.map(s => dayKey(s.t)));
-  for (let k = since; k <= today; k = addDays(k, 1)) { if (trained.has(k)) days++; if ((S.daily[k] || {}).creatine) creatine++; }
+function bodySvg(st, cls) {
   const lit = Object.keys(MUSCLES).filter(m => st[m].g > 0);
   const mask = lit.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" fill="#fff" fill-opacity="${st[m].g}"/>`).join("")).join("");
   const hits = Object.keys(MUSCLES).map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" data-muscle="${m}"/>`).join("")).join("");
-  const rows = Object.keys(MUSCLES).map(m => `<button class="mrow ${st[m].g ? "" : "off"}" data-muscle="${m}">
-      <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}</small></button>`).join("");
-  return `<h3>This week's body</h3><div class="card"><div class="bodymap">
-    <svg class="body" viewBox="0 0 182 450" role="img" aria-label="Trained in the last week: ${lit.map(m => MUSCLES[m].name).join(", ") || "nothing yet"}">
+  return `<svg class="body ${cls}" viewBox="0 0 182 450" role="img" aria-label="Trained in the last week: ${lit.map(m => MUSCLES[m].name).join(", ") || "nothing yet"}">
       <defs>
         <filter id="bm-gray" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/>
           <feComponentTransfer><feFuncR type="linear" slope=".48" intercept=".06"/><feFuncG type="linear" slope=".48" intercept=".06"/><feFuncB type="linear" slope=".48" intercept=".07"/></feComponentTransfer></filter>
@@ -419,10 +442,32 @@ function bodyMap() {
       <image href="spidey.png" width="182" height="450" filter="url(#bm-gray)"/>
       <image href="spidey.png" width="182" height="450" filter="url(#bm-pop)" mask="url(#bm-mask)"/>
       <image href="spidey.png" width="182" height="450" mask="url(#bm-head)"/>
-      <g class="hit">${hits}</g></svg>
+      <g class="hit">${hits}</g></svg>`;
+}
+function bodyMap() {
+  const st = muscleState(), today = dayKey(), since = addDays(today, -29);
+  let days = 0, creatine = 0;
+  const trained = new Set(S.sets.map(s => dayKey(s.t)));
+  for (let k = since; k <= today; k = addDays(k, 1)) { if (trained.has(k)) days++; if ((S.daily[k] || {}).creatine) creatine++; }
+  const rows = Object.keys(MUSCLES).map(m => `<button class="mrow ${st[m].g ? "" : "off"}" data-muscle="${m}">
+      <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}</small></button>`).join("");
+  return `<h3>This week's body</h3><div class="card"><div class="bodymap">${bodySvg(st, "")}
     <div class="mlist">${rows}</div></div>
     <div class="hm-foot"><span><b>${days}</b> training day${days === 1 ? "" : "s"} · <b>${creatine}</b> creatine day${creatine === 1 ? "" : "s"} <span class="muted">(last 30)</span></span></div></div>`;
 }
+// what to train next: exercises that would light up the gray muscles
+const FIX_FOR = { core: "kneeraise", quads: "squat", calves: "lunge", chest: "pushup", shoulders: "pushup", lats: "pullup", arms: "pullup", forearms: "pullup" };
+function nextHint(st) {
+  const gray = Object.keys(MUSCLES).filter(m => !st[m].g);
+  if (!gray.length) return "Every muscle is lit this week. Rest well, then keep the fire going.";
+  const legs = gray.filter(m => m === "quads" || m === "calves"), upper = gray.filter(m => !legs.includes(m));
+  const SHORT = { core: "core", arms: "arms", forearms: "forearms", shoulders: "shoulders", chest: "chest", lats: "lats" };
+  const names = upper.slice(0, 2).map(m => SHORT[m]).concat(legs.length ? ["legs"] : []);
+  const exs = [...new Set(gray.map(m => FIX_FOR[m]))].slice(0, 2);
+  const list = names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0];
+  return `${list[0].toUpperCase() + list.slice(1)} ${names.length > 1 || !["core", "chest"].includes(names[0]) ? "are" : "is"} gray. Try ${exs.map(e => `<button class="link" data-ex="${e}">${EX[e].name.toLowerCase()}</button>`).join(" or ")}.`;
+}
+
 function muscleInfo(m) {
   const s = muscleState()[m], how = Object.keys(MUSCLE_OF).filter(ex => MUSCLE_OF[ex].includes(m)).map(ex => EX[ex].name.toLowerCase());
   if (m === "core") how.push("L-sit pull-ups");
@@ -522,6 +567,7 @@ document.addEventListener("click", e => {
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.quick) { quickSet(d.quick); return; }
+  if (d.qex) { S.settings.quickEx = d.qex; save(); render(); return; }
   if (d.gvar !== undefined) { S.settings.gtgVar = Object.assign({}, S.settings.gtgVar, { pullup: +d.gvar }); save(); render(); return; }
   if (d.gstep) { const [ex, n] = d.gstep.split(":"), v = Math.max(1, Math.min(50, S.settings.gtg[ex] + +n));
     if (v === S.settings.gtg[ex]) return;
@@ -597,7 +643,7 @@ let a11yQueued = false;
 function syncA11y() {
   a11yQueued = false;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.contains("on") ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
-  document.querySelectorAll(".seg button, .qvar button, .chips button, .check").forEach(b => b.setAttribute("aria-pressed", b.classList.contains("on")));
+  document.querySelectorAll(".seg button, .qvar button, .chips button, .check, .tick, .qseg button, .qtype button").forEach(b => b.setAttribute("aria-pressed", b.classList.contains("on")));
 }
 new MutationObserver(() => { if (!a11yQueued) { a11yQueued = true; queueMicrotask(syncA11y); } })
   .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
