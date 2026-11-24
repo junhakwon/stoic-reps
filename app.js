@@ -204,10 +204,33 @@ function weekReps(ex, wk) {
 
 // ---------- logging ----------
 let lastSet = null;   // the set the "Undo" button removes
+// after a set is logged: a new rank plays the dive clip; the first set of the day plays the suit-up clip
+function afterLog(before, first) {
+  const n = streak(), r0 = rankOf(before), r1 = rankOf(n), up = n > before && r1.name !== r0.name && r1.from > 0;
+  if (!up && !first) return;
+  setTimeout(() => {   // after the caller has shown its own toast or record card
+    if (up && !$("#modal").hidden) $("#modal-body .pr-card").insertAdjacentHTML("beforeend", `<p class="rankup">And a new rank: <b>${r1.name}</b> · ${n} days</p>`);
+    else if (up) rankCard(r1, n);
+    else if ($("#modal").hidden) suitUp(n);
+  }, 60);
+}
+function rankCard(r, n) {
+  $("#modal-body").innerHTML = `<div class="pr-card"><img class="fxclip" src="fx-dive.gif" alt=""><h2>${r.name}</h2>
+    <p>${n} days without a break. ${r.next ? `Next: <b>${r.next[1]}</b> at ${r.next[0]} days.` : "The highest rank there is."}</p></div>
+    ${quoteCard(nextQuote(["discipline", "effort"], true))}<button class="big primary" data-close-modal>Keep going</button>`;
+  $("#modal").hidden = false;
+}
+let suitT = 0;
+function suitUp(n) {
+  const el = $("#suit"); el.innerHTML = `<img src="fx-suit.gif" alt=""><p>Day ${n}. <b>Suit up.</b></p>`; el.hidden = false;
+  clearTimeout(suitT); suitT = setTimeout(() => { el.hidden = true; }, 2600);
+}
 function logSet(set) {
   const pv = set.ex === "pullup" ? (set.v || 0) : 0, prBw = maxBw(set.ex, pv);
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
+  const before = streak(), first = !logDay && !S.sets.some(s => dayKey(s.t) === dayKey());
   S.sets.push(set); lastSet = set; save();
+  flashAt = Date.now(); flashM = musclesOf(set); afterLog(before, first);
   // records
   let pr = null;
   if (!set.kg && (set.v || 0) === pv && set.reps > prBw) pr = `${set.reps} ${pv ? "L-sit " : ""}${EX[set.ex].one}s unbroken. Your best ever.`;
@@ -255,7 +278,7 @@ function closeSheet() { $("#sheet").hidden = true; cur = null; render(); }
 // ---------- PR celebration ----------
 function celebrate(msg) {
   const q = nextQuote(["effort", "better", "discipline"], true);
-  $("#modal-body").innerHTML = `<div class="pr-card"><div class="big-emoji">🏛️</div><h2>New record</h2><p>${esc(msg)}</p></div>
+  $("#modal-body").innerHTML = `<div class="pr-card"><img class="fxclip" src="fx-dive.gif" alt=""><h2>New record</h2><p>${esc(msg)}</p></div>
     ${quoteCard(q)}<p class="muted" style="text-align:center">Well done. Now rest, eat your protein, and come back tomorrow.</p>
     <button class="big primary" data-close-modal>Continue</button>`;
   $("#modal").hidden = false;
@@ -425,23 +448,75 @@ function muscleState() {
   return st;
 }
 const agoText = d => d === null ? "not yet" : d === 0 ? "today" : d === 1 ? "yesterday" : `${d} days ago`;
+// ---------- the figure ----------
+// the arms are cut out along the shoulder so they can sway on their own (points in spidey.png pixels)
+const ARM_L = "41,74 27,90 21,130 9,175 1,212 0,266 33,266 33,214 40,180 46,150 48,118 48,100 46,86";
+const ARM_R = "141,74 155,90 161,130 173,175 181,212 182,266 149,266 149,214 142,180 136,150 134,118 134,100 136,86";
+let figImg = null, figKey = "", figUrl = "", flashAt = 0, flashM = [];
+function loadFig() {
+  if (figImg !== null) return; figImg = false;
+  const im = new Image(); im.onload = () => { figImg = im; render(); }; im.src = "spidey.png";
+}
+// one picture: gray body, muscles in warm color by how recently they were trained, the mask in its own color
+function figure(st) {
+  if (!figImg) { loadFig(); return ""; }
+  const key = Object.keys(MUSCLES).map(m => st[m].g).join(",");
+  if (key === figKey) return figUrl;
+  const W = 182, H = 450, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"); x.drawImage(figImg, 0, 0, W, H);
+  const img = x.getImageData(0, 0, W, H), p = img.data;
+  const mc = document.createElement("canvas"); mc.width = W; mc.height = H; const mx = mc.getContext("2d");
+  const poly = (pts, al) => { mx.fillStyle = `rgba(255,255,255,${al})`; mx.beginPath();
+    pts.split(" ").forEach((q, i) => { const [u, v] = q.split(",").map(Number); if (i) mx.lineTo(u, v); else mx.moveTo(u, v); }); mx.closePath(); mx.fill(); };
+  for (const m in MUSCLES) if (st[m].g) MUSCLES[m].p.forEach(q => poly(q, st[m].g));
+  const lit = softAlpha(mx.getImageData(0, 0, W, H).data, W, H);
+  mx.clearRect(0, 0, W, H); poly(HEAD, 1);
+  const head = softAlpha(mx.getImageData(0, 0, W, H).data, W, H);
+  for (let i = 0, j = 0; i < p.length; i += 4, j++) {
+    const r = p[i], g = p[i + 1], b = p[i + 2], l = .2126 * r + .7152 * g + .0722 * b, gray = l * .48 + 15;
+    const vr = l + (r - l) * 1.8, vg = (l + (g - l) * 1.8) * (.65 + .35 * 90 / 255), vb = (l + (b - l) * 1.8) * (.65 + .35 * 46 / 255);
+    let R = gray + (vr - gray) * lit[j], G = gray + (vg - gray) * lit[j], B = gray + (vb - gray) * lit[j];
+    p[i] = R + (r - R) * head[j]; p[i + 1] = G + (g - G) * head[j]; p[i + 2] = B + (b - B) * head[j];
+  }
+  x.putImageData(img, 0, 0);
+  const bin = atob(c.toDataURL("image/png").split(",")[1]), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  if (figUrl) URL.revokeObjectURL(figUrl);
+  figUrl = URL.createObjectURL(new Blob([u8], { type: "image/png" })); figKey = key;
+  return figUrl;
+}
+function softAlpha(d, W, H) {   // a mask's alpha (0-1), box-blurred twice so muscle edges blend softly
+  let a = new Float32Array(W * H); for (let j = 0; j < W * H; j++) a[j] = d[j * 4 + 3] / 255;
+  const R = 2;
+  for (let pass = 0; pass < 2; pass++) {
+    const t = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let s = 0, n = 0;
+      for (let k = -R; k <= R; k++) { const xx = x + k; if (xx >= 0 && xx < W) { s += a[y * W + xx]; n++; } } t[y * W + x] = s / n; }
+    for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) { let s = 0, n = 0;
+      for (let k = -R; k <= R; k++) { const yy = y + k; if (yy >= 0 && yy < H) { s += t[yy * W + x]; n++; } } a[y * W + x] = s / n; }
+  }
+  return a;
+}
 function bodySvg(st, cls) {
-  const lit = Object.keys(MUSCLES).filter(m => st[m].g > 0);
-  const mask = lit.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" fill="#fff" fill-opacity="${st[m].g}"/>`).join("")).join("");
+  const lit = Object.keys(MUSCLES).filter(m => st[m].g > 0), src = figure(st);
   const hits = Object.keys(MUSCLES).map(m => MUSCLES[m].p.map(p => `<polygon points="${p}" data-muscle="${m}"/>`).join("")).join("");
-  return `<svg class="body ${cls}" viewBox="0 0 182 450" role="img" aria-label="Trained in the last week: ${lit.map(m => MUSCLES[m].name).join(", ") || "nothing yet"}">
+  const label = `Trained in the last week: ${lit.map(m => MUSCLES[m].name).join(", ") || "nothing yet"}`;
+  if (!src) return `<svg class="body ${cls}" viewBox="0 0 182 450" role="img" aria-label="${label}"><g class="hit">${hits}</g></svg>`;
+  const rank = RANKS.indexOf(RANKS.find(r => r[1] === rankOf(streak()).name));
+  const phase = `animation-delay:-${((performance.now() / 1000) % 8.4).toFixed(2)}s`;   // keeps the breathing smooth across re-renders
+  const flash = Date.now() - flashAt < 1500 ? `<g class="flash" filter="url(#bm-glow)" style="animation-delay:-${((Date.now() - flashAt) / 1000).toFixed(2)}s">${flashM.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}"/>`).join("")).join("")}</g>` : "";
+  return `<svg class="body live ${cls}" viewBox="0 0 182 450" role="img" aria-label="${label}">
       <defs>
-        <filter id="bm-gray" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/>
-          <feComponentTransfer><feFuncR type="linear" slope=".48" intercept=".06"/><feFuncG type="linear" slope=".48" intercept=".06"/><feFuncB type="linear" slope=".48" intercept=".07"/></feComponentTransfer></filter>
-        <filter id="bm-pop" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="1.8" result="s"/>
-          <feFlood flood-color="#ff5a2e" flood-opacity=".35"/><feComposite in2="SourceAlpha" operator="in" result="t"/><feBlend in="t" in2="s" mode="multiply"/></filter>
-        <filter id="bm-soft" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2.2"/></filter>
-        <mask id="bm-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><g filter="url(#bm-soft)">${mask}</g></mask>
-        <mask id="bm-head" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><polygon points="${HEAD}" fill="#fff" filter="url(#bm-soft)"/></mask>
+        <radialGradient id="bm-aura"><stop offset="0" stop-color="#ff7a3a" stop-opacity=".6"/><stop offset=".72" stop-color="#ff7a3a" stop-opacity="0"/></radialGradient>
+        <mask id="bm-torso" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><rect width="182" height="450" fill="#fff"/><polygon points="${ARM_L}" fill="#000" stroke="#fff" stroke-width="2.5"/><polygon points="${ARM_R}" fill="#000" stroke="#fff" stroke-width="2.5"/></mask>
+        <clipPath id="bm-al"><polygon points="${ARM_L}"/></clipPath><clipPath id="bm-ar"><polygon points="${ARM_R}"/></clipPath>
+        <filter id="bm-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter>
       </defs>
-      <image href="spidey.png" width="182" height="450" filter="url(#bm-gray)"/>
-      <image href="spidey.png" width="182" height="450" filter="url(#bm-pop)" mask="url(#bm-mask)"/>
-      <image href="spidey.png" width="182" height="450" mask="url(#bm-head)"/>
+      ${rank > 0 ? `<ellipse class="aura" cx="91" cy="215" rx="${62 + rank * 5}" ry="${150 + rank * 10}" fill="url(#bm-aura)" opacity="${(.22 + rank * .08).toFixed(2)}" style="${phase}"/>` : ""}
+      <g class="fig breath" style="${phase}"><image href="${src}" width="182" height="450" mask="url(#bm-torso)"/></g>
+      <g class="fig al" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-al)"/></g>
+      <g class="fig ar" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-ar)"/></g>
+      ${flash}
       <g class="hit">${hits}</g></svg>`;
 }
 function bodyMap() {
@@ -560,7 +635,7 @@ function moreView() {
 
 // ---------- events ----------
 document.addEventListener("click", e => {
-  const b = e.target.closest("button, [data-muscle]"); if (!b) return;
+  const b = e.target.closest("button, [data-muscle], #suit"); if (!b) return;
   const d = b.dataset;
   if (d.muscle) { muscleInfo(d.muscle); return; }
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
@@ -581,6 +656,7 @@ document.addEventListener("click", e => {
     logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
   if (d.daily) { const k = curDay(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
   if (d.close !== undefined) { closeSheet(); return; }
+  if (b.id === "suit") { b.hidden = true; return; }
   if (d.closeModal !== undefined) { $("#modal").hidden = true; render(); return; }
   if (d.step) { const [f, n] = d.step.split(":"); cur[f] = Math.max(f === "reps" ? 1 : 0, Math.round((cur[f] + +n) * 10) / 10); if (cur.ex === "pushup" && f === "kg" && cur.kg > 0) cur.v = 2; drawSheet(); return; }
   if (d.var !== undefined) { cur.v = +d.var; if (cur.ex === "pushup" && cur.v < 2) cur.kg = 0; drawSheet(); return; }
