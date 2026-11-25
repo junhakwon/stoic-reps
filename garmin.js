@@ -146,6 +146,7 @@ const Garmin = (() => {
   function fromHealth(txt, maxHr = 185) {
     if (!/STOICREPS-HEALTH/.test(txt || "")) throw new Error("no run on the clipboard. Run the \"Run to Stoic Reps\" shortcut first");
     const hr = [], dist = []; let sec = "";
+    if (/STOICREPS-HEALTH 2/.test(txt)) return fromHealth2(txt, maxHr);
     for (const raw of txt.split(/\r?\n/)) {
       const l = raw.trim(); if (!l) continue;
       if (l === "[HR]") { sec = "hr"; continue; } if (l === "[DIST]") { sec = "dist"; continue; }
@@ -179,6 +180,47 @@ const Garmin = (() => {
     const inWin = dist.filter(d => d.b > win.s - 60 && d.a < win.e + 60), use = inWin.some(d => d.garmin) ? inWin.filter(d => d.garmin) : inWin;
     const m = use.reduce((t, d) => { const len = d.b - d.a, ov = Math.min(d.b, win.e + 60) - Math.max(d.a, win.s - 60); return t + (len > 0 ? d.m * Math.max(0, Math.min(1, ov / len)) : d.m); }, 0);
     return summary({ start: win.s, dur: win.e - win.s, dist: m || null, sport: "run", samples: hr.filter(x => x.t >= win.s - 30 && x.t <= win.e + 30), gap: 300, src: "health" });
+  }
+
+  // v2: Health grouped the samples per minute. "[HR] first|last" then one bpm per line; "[DIST] first|last|unit" then one distance
+  // per line. Times are spread evenly from first to last. Grouped distance is already merged across sources by Health.
+  function fromHealth2(txt, maxHr) {
+    const sec = {}; let cur = null;
+    for (const raw of txt.split(/\r?\n/)) {
+      const l = raw.trim(), h = l.match(/^\[(HR|DIST)\]\s*(.*)$/);
+      if (h) { const p = h[2].split("|").map(s => s.trim()); cur = sec[h[1]] = { a: Date.parse(p[0]) / 1000, b: Date.parse(p[1]) / 1000, unit: (p[2] || "km").toLowerCase(), v: [] }; continue; }
+      if (cur && l) cur.v.push(parseFloat(l.replace(",", ".").replace(/[^\d.]/g, "")) || 0);
+    }
+    const times = s => { const n = s.v.length, step = n > 1 && s.b && s.a ? (s.b - s.a) / (n - 1) : 60; return { step: Math.abs(step) || 60, t: i => step < 0 ? s.b + i * -step : s.a + i * step, rev: step < 0 }; };
+    const hr = [], dist = [];
+    if (sec.HR && sec.HR.a) { const T = times(sec.HR), v = T.rev ? sec.HR.v.slice().reverse() : sec.HR.v; v.forEach((x, i) => { if (x > 30 && x < 240) hr.push({ t: T.t(i), hr: Math.round(x) }); }); }
+    let step = 60;
+    if (sec.DIST && sec.DIST.a) {
+      const T = times(sec.DIST), u = sec.DIST.unit, v = T.rev ? sec.DIST.v.slice().reverse() : sec.DIST.v; step = T.step;
+      const k = /^mi/.test(u) ? 1609.344 : /^km/.test(u) ? 1000 : /^m$|^met/.test(u) ? 1 : /^ft/.test(u) ? .3048 : /^y/.test(u) ? .9144 : 1000;
+      v.forEach((x, i) => { if (x > 0) dist.push({ a: T.t(i), b: T.t(i) + step, m: x * k }); });
+    }
+    if (!hr.length && !dist.length) throw new Error("no heart rate or distance in Health from the last 12 hours. Has Garmin Connect synced?");
+    // the run: heart rate at 60% of max or more, gaps under 3 minutes; the latest stretch of 10+ minutes (else the longest of 5+)
+    const thr = Math.max(100, .6 * maxHr), segs = [];
+    for (const x of hr) { if (x.hr < thr) continue; const g = segs[segs.length - 1]; if (g && x.t - g.e <= 180) g.e = x.t; else segs.push({ s: x.t, e: x.t }); }
+    const long = segs.filter(g => g.e - g.s >= 600);
+    let win = long.length ? long[long.length - 1] : segs.filter(g => g.e - g.s >= 300).sort((x, y) => (y.e - y.s) - (x.e - x.s))[0] || null;
+    if (win) {   // the last minute counts too; then take in the minutes on either side spent moving at running pace (heart rate lags at the start)
+      win = { s: win.s, e: win.e + 60 };
+      const fastAt = t => dist.some(d => Math.abs(d.a - t) < step / 2 && d.m / (d.b - d.a) >= 2);
+      while (fastAt(win.s - step)) win.s -= step;
+      while (fastAt(win.e)) win.e += step;
+    }
+    // no heart rate: minutes moving at running pace (2 m/s or more), gaps under 3 minutes, the latest stretch of 500 m or more
+    if (!win) {
+      const fast = [];
+      for (const d of dist) { if (d.m / (d.b - d.a) < 2) continue; const g = fast[fast.length - 1]; if (g && d.a - g.e <= 180) { g.e = d.b; g.m += d.m; } else fast.push({ s: d.a, e: d.b, m: d.m }); }
+      win = fast.filter(g => g.m >= 500).pop() || null;
+    }
+    if (!win) throw new Error("couldn't find a run in the last 12 hours of Health data");
+    const m = dist.filter(d => d.a >= win.s - 30 && d.a < win.e).reduce((t, d) => t + d.m, 0);
+    return summary({ start: win.s, dur: win.e - win.s, dist: m || null, sport: "run", samples: hr.filter(x => x.t >= win.s && x.t < win.e).concat([{ t: win.e, hr: null }]), gap: 300, src: "health" });
   }
 
   // ---------- shared: time at each heart rate, a short heart-rate line, and the totals ----------
