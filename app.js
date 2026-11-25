@@ -200,7 +200,7 @@ function streakInfo() {
     best = Math.max(best, run);
   }
   const restOk = !days.has(today) && days.has(addDays(today, -1)) && run > 0 && (!lastRest || addDays(lastRest, 7) <= today);
-  return { n: run, best, status, restOk, row };
+  return { n: run, best, status, restOk, row, lastRest };
 }
 const streak = () => streakInfo().n;
 const bestStreak = () => streakInfo().best;
@@ -319,10 +319,35 @@ function drawSheet() {
   $("#sh-reps").textContent = cur.reps;
   $("#sh-kg").textContent = cur.kg ? "+" + fmtKg(cur.kg) : "0";
   if (VARS[cur.ex]) $("#sh-var-seg").innerHTML = VARS[cur.ex].map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
+  drawLast();
   const today = S.sets.map((s, i) => [s, i]).filter(([s]) => s.ex === cur.ex && dayKey(s.t) === curDay());
   $("#sh-today").innerHTML = today.length ? today.map(([s, i]) => `<button data-del-set="${i}" class="${s.gtg ? "gtg" : ""} ${pendingDel === i ? "del" : ""}" aria-label="${pendingDel === i ? "Tap again to remove this set" : "Set of " + s.reps + ", tap to remove"}">${pendingDel === i ? "Remove?" : `${s.reps}${loadText(s.ex, s.kg, s.v).replace(" @ ", " ")}${s.gtg ? " · GTG" : ""}`}</button>`).join("") + '<span class="muted tip">tap a set to remove it</span>' : `<span class="muted" style="background:none;padding:0">No sets yet ${logDay ? "that day" : "today"}</span>`;
 }
 function closeSheet() { $("#sheet").hidden = true; cur = null; render(); }
+// last time: the previous session's working sets for this exercise, and the set that matches the one you're on now
+function lastSession(ex) { const ss = sessions(ex).filter(x => x.d < curDay()); return ss[ss.length - 1] || null; }
+function sameRef(ex) {
+  const last = lastSession(ex); if (!last) return null;
+  const done = S.sets.filter(s => s.ex === ex && !s.gtg && dayKey(s.t) === curDay()).length;
+  return last.sets[Math.min(done, last.sets.length - 1)];
+}
+function drawLast() {
+  const ex = cur.ex, last = lastSession(ex), el = $("#sh-last");
+  if (!last) { el.innerHTML = ""; return; }
+  const one = new Set(last.sets.map(loadVal)).size === 1, lt = (s) => loadText(ex, s.kg, s.v).replace(" @ ", " ");
+  const txt = last.sets.map(s => s.reps + (one ? "" : lt(s))).join(", ") + (one ? loadText(ex, last.sets[0].kg, last.sets[0].v) : "");
+  const ref = sameRef(ex);
+  el.innerHTML = `<span>Last time · ${dayLabel(last.d)}<b>${esc(txt)}</b></span>
+    <button class="small-btn" data-same>Same as last<small>${ref.reps}${esc(lt(ref))}</small></button>`;
+}
+// log the set shown in the sheet
+function logCur() {
+  unlockBeep(); pendingDel = null;
+  const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: VARS[cur.ex] ? cur.v : 0, gtg: false });
+  drawSheet();
+  if (!logDay) startRest(S.settings.rest[cur.kg > 0 ? "wt" : "bw"]);
+  if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`, false, true); }
+}
 
 // ---------- PR celebration ----------
 function celebrate(msg) {
@@ -391,6 +416,12 @@ function zonesOf(r) {
   for (const b in r.hr || {}) z[Math.max(0, Math.min(4, Math.floor((b / mx * 100 - 50) / 10)))] += r.hr[b];
   return z;
 }
+// effort: minutes in each zone weighted 1-5 (a heart-rate training load), so runs of any length can be compared
+function effortOf(r) {
+  const z = zonesOf(r); if (!z.some(Boolean)) return null;
+  return Math.round(z.reduce((t, s, i) => t + s / 60 * (i + 1), 0));
+}
+const effortWord = e => e < 40 ? "easy" : e < 80 ? "moderate" : e < 140 ? "hard" : "very hard";
 let pendingRunDel = null;   // start time of the run waiting for a second tap on Remove
 function runCard(r) {
   const z = zonesOf(r), tot = z.reduce((a, b) => a + b, 0), top = tot ? z.indexOf(Math.max(...z)) : -1;
@@ -399,10 +430,18 @@ function runCard(r) {
   const line = tr.length > 1 ? `<svg class="hrline" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points="${tr.map((v, i) =>
     `${(i / (tr.length - 1) * 300).toFixed(1)},${(40 - (v - lo) / Math.max(1, hi - lo) * 36).toFixed(1)}`).join(" ")}"/></svg>` : "";
   const stat = (v, l) => v ? `<div><b>${v}</b><span>${l}</span></div>` : "";
+  const eff = effortOf(r);
+  // splits: a bar per km, longest bar = fastest km
+  const sp = r.splits || [], fast = Math.min(...sp), slow = Math.max(...sp);
+  const splits = sp.length ? `<div class="splits" aria-label="Splits per kilometre">${sp.map((s, i) => `<div class="sp${sp.length > 1 && s === fast ? " fast" : ""}${sp.length > 1 && s === slow ? " slow" : ""}">
+      <span>${i + 1}</span><i style="width:${Math.round(100 * fast / s)}%"></i><b>${fmtDur(s)}</b></div>`).join("")}
+      ${r.splitLast ? `<div class="sp part"><span>+${(r.splitLast[1] / 1000).toFixed(2)}</span><i style="width:${Math.min(100, Math.round(100 * fast / (r.splitLast[0] / r.splitLast[1] * 1000)))}%"></i><b>${fmtDur(r.splitLast[0] / r.splitLast[1] * 1000)}</b></div>` : ""}
+      <p class="muted zsum">${sp.length > 1 ? `Fastest km ${sp.indexOf(fast) + 1} (${fmtDur(fast)}) · slowest km ${sp.indexOf(slow) + 1} (${fmtDur(slow)})${sp[sp.length - 1] < sp[0] ? " · negative split" : ""}` : "Pace per km"}</p></div>` : "";
   return `<div class="card runcard"><div class="rhead"><b>${cap(KIND[r.sport] || "run")}</b><span class="muted">${at} · ${r.src === "hand" ? "by hand" : r.src === "health" ? "Apple Health" : "Garmin"}</span>
       <button class="small-btn ${pendingRunDel === r.t ? "del" : ""}" data-run-del="${r.t}">${pendingRunDel === r.t ? "Remove?" : "Remove"}</button></div>
     <div class="rstats">${stat(fmtDur(r.dur), "time")}${stat(r.dist ? fmtKm(r.dist) : "", "km")}${stat(paceOf(r).replace(" /km", ""), "per km")}
-      ${stat(r.avgHr, "avg bpm")}${stat(r.maxHr, "max bpm")}${stat(r.kcal, "kcal")}</div>
+      ${stat(r.avgHr, "avg bpm")}${stat(r.maxHr, "max bpm")}${stat(r.kcal, "kcal")}${stat(eff, `effort · ${eff ? effortWord(eff) : ""}`)}</div>
+    ${splits}
     ${tot ? `<div class="zbar" role="img" aria-label="Heart-rate zones: ${z.map((s, i) => `${ZONES[i][0]} ${Math.round(100 * s / tot)}%`).join(", ")}">${z.map((s, i) => s ? `<i class="z${i + 1}" style="flex:${s}"></i>` : "").join("")}</div>
       <div class="zleg">${z.map((s, i) => `<span class="${i === top ? "top" : ""}"><i class="z${i + 1}"></i>${ZONES[i][0]} ${fmtDur(s)}</span>`).join("")}</div>
       <p class="muted zsum">Mostly ${ZONES[top][0]} (${ZONES[top][1].toLowerCase()}) · zones from max ${maxHr()} bpm</p>` : ""}
@@ -412,7 +451,7 @@ function runRow(st) {
   const last = S.runs[S.runs.length - 1], g = Math.max(st.quads.g, st.calves.g);
   const sub = last ? `Last: ${last.dist ? fmtKm(last.dist) + " km, " : ""}${fmtDur(last.dur)} · ${agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5))}` : "Add from a Garmin file or by hand";
   return `<button class="exrow" data-run-add><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
-      <span class="t"><b>Run</b><span class="nx">${esc(sub)}</span></span>
+      <span class="t"><b>Run</b><span class="nx">${esc(sub)}</span>${recNote("run", st)}</span>
       <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
 }
 function openRunSheet() {
@@ -489,7 +528,8 @@ function homeView() {
   const rows = Object.keys(EX).map(k => {
     const sg = suggest(k), g = st[MUSCLE_OF[k][0]].g;   // the main muscle it trains
     return `<button class="exrow" data-ex="${k}"><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
-      <span class="t"><b>${EX[k].name}</b><span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text.replace(/^Next: /, "Next "))}</span></span>
+      <span class="t"><b>${EX[k].name}</b><span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text.replace(/^Next: /, "Next "))}</span>
+        ${recNote(k, st)}</span>
       <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
   }).join("");
   return `<div class="hdr"><h1>Stoic Reps</h1>
@@ -508,6 +548,11 @@ function homeView() {
     ${quickBar()}`;
 }
 
+// under an exercise: its least-recovered muscle, when under 60%
+function recNote(ex, st) {
+  const m = (ex === "run" ? ["quads", "calves"] : MUSCLE_OF[ex]).reduce((a, b) => st[b].rec < st[a].rec ? b : a);
+  return st[m].rec < 60 ? `<span class="recn">${MUSCLES[m].name.split(" ")[0]} ${st[m].rec}% recovered${st[m].rec < 35 ? " · go light" : ""}</span>` : "";
+}
 // streak: number, Stoic rank, the last 7 days, progress to the next rank
 let lastBarPct = null;   // the web bar shoots out when its length changes (and once when the app opens)
 function streakCard() {
@@ -531,7 +576,35 @@ function streakCard() {
   return `<div class="streak"><div class="sn"><b>${n}</b><span>day streak<br><em>${r.name}</em></span></div>
     <div class="sdots" aria-label="Last 7 days: ${ks.filter(k => kind(k) === "on").length} trained${ks.some(k => kind(k) === "rday") ? ", 1 rest day" : ""}">
       <svg class="threads" viewBox="0 0 700 20" preserveAspectRatio="none" aria-hidden="true">${threads}</svg>${dots}</div>
-    <div class="sbar web ${shoot}"><i style="width:${pct}%"></i></div><p class="sline">${line}${best > n ? ` · best ${best}` : ""}</p></div>`;
+    <div class="sbar web ${shoot}"><i style="width:${pct}%"></i></div><p class="sline">${line}${best > n ? ` · best ${best}` : ""}</p>${aheadRow(info)}</div>`;
+}
+// the next 3 days if you keep training: when a rest day is free, and when the next rank comes
+function aheadRow(info) {
+  if (logDay || !info.n) return "";
+  const today = dayKey(); let n = info.n + (info.status[today] === "on" ? 0 : 1), restShown = false;
+  const cells = [1, 2, 3].map(i => {
+    const k = addDays(today, i); n++;
+    const rk = RANKS.find(r => r[0] === n && r[0] > 0);
+    let tag = rk ? `<b>${rk[1]}</b>` : "";
+    if (!tag && !restShown && (!info.lastRest || addDays(info.lastRest, 7) <= k)) { tag = "rest free"; restShown = true; }
+    return `<span class="ah${rk ? " rank" : tag ? " free" : ""}"><em>${i === 1 ? "Tmrw" : WD[keyToDate(k).getDay()]}</em>${tag || "train"}</span>`;
+  }).join("");
+  return `<div class="ahead" aria-label="Next three days">${cells}</div>`;
+}
+// Progress: the last five weeks, Monday first. Filled = lifted, blue = ran, both = ring; dashed = the free rest day
+function calendarCard() {
+  const info = streakInfo(), today = dayKey(), lift = new Set(S.sets.map(s => dayKey(s.t))), ran = new Set(S.runs.map(r => dayKey(r.t)));
+  const start = addDays(weekStart(today), -28), end = addDays(weekStart(today), 6), cells = [];
+  let nLift = 0, nRun = 0, nRest = 0;
+  for (let k = start; k <= end; k = addDays(k, 1)) {
+    const L = lift.has(k), R = ran.has(k), st = info.status[k];
+    const cls = k > today ? "fut" : L && R ? "both" : L ? "lift" : R ? "run" : st === "rday" ? "rday" : "off";
+    if (k <= today) { if (L) nLift++; if (R) nRun++; if (st === "rday") nRest++; }
+    const d = keyToDate(k).getDate();
+    cells.push(`<span class="cd ${cls}${k === today ? " today" : ""}" title="${k}">${d}</span>`);
+  }
+  return `<h3>Five weeks · ${shortDate(start)} – ${shortDate(end)}</h3><div class="card cal"><div class="cgrid">${["M", "T", "W", "T", "F", "S", "S"].map(w => `<span class="cw">${w}</span>`).join("")}${cells.join("")}</div>
+    <div class="cleg"><span><i class="lift"></i>Lifted ${nLift}</span><span><i class="run"></i>Ran ${nRun}</span><span><i class="both"></i>Both</span><span><i class="rday"></i>Rest day ${nRest}</span></div></div>`;
 }
 // on the day after two training days in a row, offer a recovery day (it doesn't break the streak)
 function restDayCard() {
@@ -608,14 +681,28 @@ const MUSCLE_OF = { pullup: ["lats", "arms", "forearms"], pushup: ["chest", "sho
   lunge: ["quads", "calves"], kneeraise: ["core", "forearms"] };
 const musclesOf = s => (MUSCLE_OF[s.ex] || []).concat(s.ex === "pullup" && s.v === 1 ? ["core"] : []);   // L-sit adds core
 const glow = d => d <= 1 ? 1 : d === 2 ? .8 : d === 3 ? .6 : d <= 6 ? .35 : 0;   // days since trained -> color strength
+// recovery: how fresh each muscle is (0-100%). Every session leaves fatigue by how much was done (a working set = 1,
+// weighted 1.2, groove set 0.4; a run by its effort), fading by about two thirds every 30 hours. 8 units = 0% recovered.
+const REC_TAU = 30, REC_FULL = 8;
+const setLoad = s => s.gtg ? .4 : s.kg > 0 ? 1.2 : 1;
+const runLoad = r => Math.min(REC_FULL, (effortOf(r) || r.dur / 60 * 2) / 20);
+function recovery() {
+  const now = Date.now(), F = {};
+  for (const m in MUSCLES) F[m] = 0;
+  const add = (t, ms, l) => { const h = (now - t) / 36e5; if (h < 0 || h > 240) return; for (const m of ms) F[m] += l * Math.exp(-h / REC_TAU); };
+  for (const s of S.sets) add(s.t, musclesOf(s), setLoad(s));
+  for (const r of S.runs) add(r.t + r.dur * 1000, RUN_MUSCLES[r.sport] || RUN_MUSCLES.run, runLoad(r));
+  const out = {}; for (const m in MUSCLES) out[m] = Math.round(100 * Math.max(0, 1 - F[m] / REC_FULL));
+  return out;
+}
 function muscleState() {
   const last = {}, by = {}, today = dayKey();
   for (const s of S.sets) { const k = dayKey(s.t); for (const m of musclesOf(s)) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = EX[s.ex].name.toLowerCase(); } }
   for (const r of S.runs) { const k = dayKey(r.t); for (const m of RUN_MUSCLES[r.sport] || RUN_MUSCLES.run) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = KIND[r.sport] || "run"; } }
-  const st = {};
+  const st = {}, rec = recovery();
   for (const m in MUSCLES) {
     const d = last[m] ? Math.round((keyToDate(today) - keyToDate(last[m])) / 864e5) : null;
-    st[m] = { d, g: d === null ? 0 : glow(d), what: by[m] };
+    st[m] = { d, g: d === null ? 0 : glow(d), what: by[m], rec: rec[m] };
   }
   return st;
 }
@@ -706,7 +793,7 @@ function bodyMap() {
   const trained = activeDays();
   for (let k = since; k <= today; k = addDays(k, 1)) { if (trained.has(k)) days++; if ((S.daily[k] || {}).creatine) creatine++; }
   const rows = Object.keys(MUSCLES).map(m => `<button class="mrow ${st[m].g ? "" : "off"}" data-muscle="${m}">
-      <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}</small></button>`).join("");
+      <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}${st[m].rec < 100 ? ` · <em class="${st[m].rec < 50 ? "low" : ""}">${st[m].rec}% recovered</em>` : ""}</small></button>`).join("");
   return `<h3>This week's body</h3><div class="card"><div class="bodymap">${bodySvg(st, "")}
     <div class="mlist">${rows}</div></div>
     <div class="hm-foot"><span><b>${days}</b> training day${days === 1 ? "" : "s"} · <b>${creatine}</b> creatine day${creatine === 1 ? "" : "s"} <span class="muted">(last 30)</span></span></div></div>`;
@@ -715,7 +802,14 @@ function bodyMap() {
 const FIX_FOR = { core: "kneeraise", quads: "squat", calves: "lunge", chest: "pushup", shoulders: "pushup", lats: "pullup", arms: "pullup", forearms: "pullup" };
 function nextHint(st) {
   const gray = Object.keys(MUSCLES).filter(m => !st[m].g);
-  if (!gray.length) return "Every muscle is lit this week. Rest well, then keep the fire going.";
+  const tired = Object.keys(MUSCLES).filter(m => st[m].rec < 50);
+  if (!gray.length || tired.length >= 3) {   // everything trained lately, or a lot is still tired: point at the freshest exercise
+    const fresh = Object.keys(EX).map(e => [e, Math.min(...MUSCLE_OF[e].map(m => st[m].rec))]).sort((a, b) => b[1] - a[1])[0];
+    if (!tired.length) return "Every muscle is lit and recovered. Keep the fire going.";
+    const T = tired.map(m => MUSCLES[m].name.split(" ")[0].toLowerCase()).slice(0, 2).join(" and ");
+    return fresh[1] >= 70 ? `${T[0].toUpperCase() + T.slice(1)} still recovering. Fresh: <button class="link" data-ex="${fresh[0]}">${EX[fresh[0]].name.toLowerCase()}</button> (${fresh[1]}%).`
+      : `Most muscles are still recovering. A rest day or an easy walk would serve you well.`;
+  }
   const legs = gray.filter(m => m === "quads" || m === "calves"), upper = gray.filter(m => !legs.includes(m));
   const SHORT = { core: "core", arms: "arms", forearms: "forearms", shoulders: "shoulders", chest: "chest", lats: "lats" };
   const names = upper.slice(0, 2).map(m => SHORT[m]).concat(legs.length ? ["legs"] : []);
@@ -729,7 +823,7 @@ function muscleInfo(m) {
   if (m === "core") how.push("L-sit pull-ups");
   if (m === "quads" || m === "calves") how.push("a run");
   toast(s.d === null ? `${MUSCLES[m].name}: not trained yet. Try ${how.join(" or ")}.`
-    : `${MUSCLES[m].name}: last trained ${agoText(s.d)} (${s.what}).${s.g ? "" : " Gone gray — time for " + how.join(" or ") + "."}`);
+    : `${MUSCLES[m].name}: last trained ${agoText(s.d)} (${s.what}), ${s.rec}% recovered.${s.rec < 50 ? " Give it rest or go light." : s.g ? "" : " Gone gray — time for " + how.join(" or ") + "."}`);
 }
 
 function progressView() {
@@ -769,7 +863,7 @@ function progressView() {
       <div class="bar"><i style="width:${p.done ? 100 : pct}%"></i></div></div>
       ${g.manual ? `<button data-goal-done="${g.id}">${g.done ? "↺" : "✓"}</button>` : ""}</div>`;
   }).join("");
-  return `<h1>Progress</h1>${bodyMap()}${runsProgress()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
+  return `<h1>Progress</h1>${bodyMap()}${calendarCard()}${runsProgress()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
     <h3>Best set by day</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
     <h3>Total reps per week</h3><div class="card">${barChart(weeks)}</div>
@@ -864,14 +958,8 @@ document.addEventListener("click", e => {
   if (d.delSet !== undefined) { const i = +d.delSet;
     if (pendingDel === i) { S.sets.splice(i, 1); pendingDel = null; save(); toast("Set removed"); } else pendingDel = i;
     drawSheet(); return; }
-  if (b.id === "sh-log") {
-    unlockBeep(); pendingDel = null;
-    const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: VARS[cur.ex] ? cur.v : 0, gtg: false });
-    drawSheet();
-    if (!logDay) startRest(S.settings.rest[cur.kg > 0 ? "wt" : "bw"]);
-    if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`, false, true); }
-    return;
-  }
+  if (b.id === "sh-log") { logCur(); return; }
+  if (d.same !== undefined && cur) { const r = sameRef(cur.ex); if (r) { cur.reps = r.reps; cur.kg = r.kg || 0; cur.v = r.v || 0; logCur(); } return; }
   if (d.prog) { progEx = d.prog; render(); return; }
   if (d.goalDone) { const g = S.goals.find(x => x.id === +d.goalDone); g.done = !g.done; save(); render(); return; }
   if (d.goalDel) { S.goals = S.goals.filter(x => x.id !== +d.goalDel); save(); render(); return; }

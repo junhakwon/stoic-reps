@@ -109,7 +109,8 @@ const Garmin = (() => {
       if (time) pts.push({ t: Date.parse(time) / 1000, hr: num(tag(m[2], "hr")), lat, lon });
     }
     if (!pts.length) throw new Error("no track points in that .gpx file");
-    let d = 0; for (let i = 1; i < pts.length; i++) if (pts[i].lat != null && pts[i - 1].lat != null) d += hav(pts[i - 1], pts[i]);
+    let d = 0; if (pts.length) pts[0].dist = 0;
+    for (let i = 1; i < pts.length; i++) { if (pts[i].lat != null && pts[i - 1].lat != null) d += hav(pts[i - 1], pts[i]); pts[i].dist = d; }
     const type = (tag(txt, "type") || "running").toLowerCase();
     return summary({ start: pts[0].t, sport: /walk/.test(type) ? "walk" : /hik/.test(type) ? "hike" : /cycl|bik/.test(type) ? "ride" : "run",
       dist: d || null, samples: pts, src: "gpx" });
@@ -227,8 +228,10 @@ const Garmin = (() => {
   function summary(o) {
     const off = o.fitTime ? FIT_EPOCH : 0, S = o.samples || [], gap = o.gap || 30;
     const hr = {}; let moving = 0, hrTime = 0, hrSum = 0, maxHr = 0;
+    if (S.length) S[0].mt = 0;
     for (let i = 1; i < S.length; i++) {
       const dt = S[i].t - S[i - 1].t;
+      S[i].mt = moving + (dt > 0 && dt <= gap ? dt : 0);   // moving time so far (for splits)
       if (!(dt > 0 && dt <= gap)) continue;   // longer gaps are pauses
       moving += dt;
       const b = S[i - 1].hr;
@@ -242,12 +245,27 @@ const Garmin = (() => {
       for (const x of withHr) { const i = Math.min(n - 1, Math.floor((x.t - t0) / span * n)); acc[i][0] += x.hr; acc[i][1]++; }
       for (const [s, c] of acc) if (c) trace.push(Math.round(s / c));
     }
+    // splits: moving seconds for each full kilometre, and the part after the last one (if 100 m or more)
+    let splits = null, splitLast = null;
+    const D = S.filter(x => x.dist != null);
+    if (D.length > 1 && D[D.length - 1].dist - D[0].dist >= 1000) {
+      splits = []; let next = 1000, prev = D[0].mt; const d0 = D[0].dist;
+      for (let i = 1; i < D.length; i++) {
+        const a = D[i - 1], b = D[i];
+        while (b.dist - d0 >= next) {
+          const f = (next - (a.dist - d0)) / ((b.dist - a.dist) || 1), at = a.mt + f * (b.mt - a.mt);
+          splits.push(Math.round(at - prev)); prev = at; next += 1000;
+        }
+      }
+      const rest = D[D.length - 1].dist - d0 - (next - 1000);
+      if (rest >= 100) splitLast = [Math.round(D[D.length - 1].mt - prev), Math.round(rest)];
+    }
     const dur = Math.round(o.dur || moving || o.elapsed || (S.length ? S[S.length - 1].t - S[0].t : 0));
     if (!(dur > 0)) throw new Error("couldn't find how long the run was");
     return {
       t: Math.round((o.start + off) * 1000), dur, dist: o.dist ? Math.round(o.dist) : null, kcal: o.kcal ? Math.round(o.kcal) : null,
       avgHr: o.avgHr || (hrTime ? Math.round(hrSum / hrTime) : null), maxHr: o.maxHr || maxHr || null,
-      sport: o.sport, hr, trace, src: o.src,
+      sport: o.sport, hr, trace, src: o.src, ...(splits ? { splits, splitLast } : {}),
     };
   }
   return { parse, fromHealth };
