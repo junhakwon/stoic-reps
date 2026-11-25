@@ -399,7 +399,7 @@ function runCard(r) {
   const line = tr.length > 1 ? `<svg class="hrline" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points="${tr.map((v, i) =>
     `${(i / (tr.length - 1) * 300).toFixed(1)},${(40 - (v - lo) / Math.max(1, hi - lo) * 36).toFixed(1)}`).join(" ")}"/></svg>` : "";
   const stat = (v, l) => v ? `<div><b>${v}</b><span>${l}</span></div>` : "";
-  return `<div class="card runcard"><div class="rhead"><b>${cap(KIND[r.sport] || "run")}</b><span class="muted">${at} · ${r.src === "hand" ? "by hand" : "Garmin"}</span>
+  return `<div class="card runcard"><div class="rhead"><b>${cap(KIND[r.sport] || "run")}</b><span class="muted">${at} · ${r.src === "hand" ? "by hand" : r.src === "health" ? "Apple Health" : "Garmin"}</span>
       <button class="small-btn ${pendingRunDel === r.t ? "del" : ""}" data-run-del="${r.t}">${pendingRunDel === r.t ? "Remove?" : "Remove"}</button></div>
     <div class="rstats">${stat(fmtDur(r.dur), "time")}${stat(r.dist ? fmtKm(r.dist) : "", "km")}${stat(paceOf(r).replace(" /km", ""), "per km")}
       ${stat(r.avgHr, "avg bpm")}${stat(r.maxHr, "max bpm")}${stat(r.kcal, "kcal")}</div>
@@ -417,8 +417,12 @@ function runRow(st) {
 }
 function openRunSheet() {
   $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Add a run</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
-    <button class="big primary" data-act="run-file">Choose Garmin file</button><input id="run-file" type="file" hidden>
-    <p class="muted rhelp">In Safari, open the run on connect.garmin.com, tap ⚙ → <b>Export Original</b>, then pick the .zip here. GPX and TCX files work too. The file is read on this phone; nothing is uploaded.</p>
+    <button class="big primary" data-act="run-paste">Paste from Health</button>
+    <p class="muted rhelp">Run the <b>Run to Stoic Reps</b> shortcut first. It copies today's run from Apple Health (synced from Garmin Connect).</p>
+    <div id="rn-pastebox" hidden><textarea id="rn-text" rows="3" placeholder="Paste here (touch and hold → Paste)"></textarea>
+      <button class="big" data-act="run-paste-text">Add pasted run</button></div>
+    <button class="big" data-act="run-file">Choose Garmin file</button><input id="run-file" type="file" hidden>
+    <p class="muted rhelp">Or, in Safari, open the run on connect.garmin.com, tap ⚙ → <b>Export Original</b>, then pick the .zip here. GPX and TCX files work too. Files are read on this phone; nothing is uploaded.</p>
     <h3>Or by hand${logDay ? ` · ${dayLabel(logDay)}` : ""}</h3>
     <div class="inrow"><label>Minutes</label><input id="rn-min" type="number" inputmode="decimal" placeholder="30"></div>
     <div class="inrow"><label>Distance (km)</label><input id="rn-km" type="number" inputmode="decimal" step="0.01" placeholder="5"></div>
@@ -439,6 +443,9 @@ function addRun(r) {
   const n = streak(), r0 = rankOf(before), r1 = rankOf(n);
   if (n > before && r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, n), 60);
   else if (first) setTimeout(() => suitUp(n), 60);
+}
+function addHealthRun(txt) {
+  try { addRun(Garmin.fromHealth(txt, maxHr())); } catch (e) { toast(cap(e.message), true); }
 }
 function saveHandRun() {
   const min = parseFloat($("#rn-min").value), km = parseFloat($("#rn-km").value), hr = parseInt($("#rn-hr").value);
@@ -818,6 +825,14 @@ document.addEventListener("click", e => {
   if (d.runAdd !== undefined) { openRunSheet(); return; }
   if (d.act === "run-file") { $("#run-file").click(); return; }
   if (d.act === "run-save") { saveHandRun(); return; }
+  if (d.act === "run-paste") {   // read the shortcut's text from the clipboard; if the phone won't allow it, show a box to paste into
+    const box = () => { $("#rn-pastebox").hidden = false; $("#rn-text").focus(); };
+    if (!navigator.clipboard || !navigator.clipboard.readText) { box(); return; }
+    const wait = setTimeout(box, 3000);   // no answer (prompt ignored): offer the box too
+    navigator.clipboard.readText().then(t => { clearTimeout(wait); addHealthRun(t); }, () => { clearTimeout(wait); box(); });
+    return;
+  }
+  if (d.act === "run-paste-text") { addHealthRun($("#rn-text").value); return; }
   if (d.runDel !== undefined) { const t = +d.runDel;
     if (pendingRunDel === t) { S.runs = S.runs.filter(r => r.t !== t); pendingRunDel = null; save(); toast("Run removed"); } else pendingRunDel = t;
     render(); return; }

@@ -140,13 +140,54 @@ const Garmin = (() => {
     return 2 * R * Math.asin(Math.sqrt(x));
   }
 
+  // ---------- Apple Health text from the "Run to Stoic Reps" shortcut ----------
+  // [HR] lines: start, bpm   [DIST] lines: start, end, value, unit, source. The run is found in today's samples:
+  // first Garmin's distance samples (they belong to the synced activity), else a stretch of raised heart rate.
+  function fromHealth(txt, maxHr = 185) {
+    if (!/STOICREPS-HEALTH/.test(txt || "")) throw new Error("no run on the clipboard. Run the \"Run to Stoic Reps\" shortcut first");
+    const hr = [], dist = []; let sec = "";
+    for (const raw of txt.split(/\r?\n/)) {
+      const l = raw.trim(); if (!l) continue;
+      if (l === "[HR]") { sec = "hr"; continue; } if (l === "[DIST]") { sec = "dist"; continue; }
+      const p = l.split(",").map(s => s.trim());
+      if (sec === "hr" && p.length >= 2) {   // a decimal comma would split the number: glue it back
+        const t = Date.parse(p[0]) / 1000, v = parseFloat(p.slice(1).join(".").replace(/[^\d.]/g, ""));
+        if (t && v > 30 && v < 240) hr.push({ t, hr: Math.round(v) });
+      } else if (sec === "dist" && p.length >= 5) {
+        const a = Date.parse(p[0]) / 1000, b = Date.parse(p[1]) / 1000, src = p[p.length - 1], unit = p[p.length - 2].toLowerCase();
+        const v = parseFloat(p.slice(2, -2).join(".").replace(/[^\d.]/g, ""));
+        const k = /^mi/.test(unit) ? 1609.344 : /^km/.test(unit) ? 1000 : /^m$|^met/.test(unit) ? 1 : /^ft/.test(unit) ? .3048 : /^y/.test(unit) ? .9144 : 1000;
+        if (a && b >= a && v >= 0) dist.push({ a, b, m: v * k, garmin: /garmin/i.test(src) });
+      }
+    }
+    hr.sort((x, y) => x.t - y.t); dist.sort((x, y) => x.a - y.a);
+    let win = null;
+    // 1. Garmin distance samples, grouped where they're under 5 minutes apart; the latest group of 300 m or more
+    const gd = dist.filter(d => d.garmin), groups = [];
+    for (const d of gd) { const g = groups[groups.length - 1]; if (g && d.a - g.e <= 300) { g.e = Math.max(g.e, d.b); g.m += d.m; } else groups.push({ s: d.a, e: d.b, m: d.m }); }
+    const big = groups.filter(g => g.m >= 300 && g.e - g.s >= 180);
+    if (big.length) win = big[big.length - 1];
+    // 2. otherwise: heart rate at 60% of max or more, gaps under 3 minutes; the latest stretch of 10+ minutes (else the longest of 5+)
+    if (!win) {
+      const thr = Math.max(100, .6 * maxHr), segs = [];
+      for (const x of hr) { if (x.hr < thr) continue; const g = segs[segs.length - 1]; if (g && x.t - g.e <= 180) g.e = x.t; else segs.push({ s: x.t, e: x.t }); }
+      const long = segs.filter(g => g.e - g.s >= 600);
+      win = long.length ? long[long.length - 1] : segs.filter(g => g.e - g.s >= 300).sort((x, y) => (y.e - y.s) - (x.e - x.s))[0] || null;
+    }
+    if (!win) throw new Error(hr.length || dist.length ? "couldn't find a run in today's Health data" : "no heart rate or distance from today in Health yet. Has Garmin Connect synced?");
+    // distance in the window: Garmin's samples if there are any (the iPhone counts its own too), shared out by overlap
+    const inWin = dist.filter(d => d.b > win.s - 60 && d.a < win.e + 60), use = inWin.some(d => d.garmin) ? inWin.filter(d => d.garmin) : inWin;
+    const m = use.reduce((t, d) => { const len = d.b - d.a, ov = Math.min(d.b, win.e + 60) - Math.max(d.a, win.s - 60); return t + (len > 0 ? d.m * Math.max(0, Math.min(1, ov / len)) : d.m); }, 0);
+    return summary({ start: win.s, dur: win.e - win.s, dist: m || null, sport: "run", samples: hr.filter(x => x.t >= win.s - 30 && x.t <= win.e + 30), gap: 300, src: "health" });
+  }
+
   // ---------- shared: time at each heart rate, a short heart-rate line, and the totals ----------
   function summary(o) {
-    const off = o.fitTime ? FIT_EPOCH : 0, S = o.samples || [];
+    const off = o.fitTime ? FIT_EPOCH : 0, S = o.samples || [], gap = o.gap || 30;
     const hr = {}; let moving = 0, hrTime = 0, hrSum = 0, maxHr = 0;
     for (let i = 1; i < S.length; i++) {
       const dt = S[i].t - S[i - 1].t;
-      if (!(dt > 0 && dt <= 30)) continue;   // longer gaps are pauses
+      if (!(dt > 0 && dt <= gap)) continue;   // longer gaps are pauses
       moving += dt;
       const b = S[i - 1].hr;
       if (b > 30 && b < 240) { hr[b] = (hr[b] || 0) + dt; hrTime += dt; hrSum += b * dt; }
@@ -167,6 +208,6 @@ const Garmin = (() => {
       sport: o.sport, hr, trace, src: o.src,
     };
   }
-  return { parse };
+  return { parse, fromHealth };
 })();
 if (typeof module !== "undefined") module.exports = Garmin;
