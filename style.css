@@ -308,3 +308,26 @@ svg.body .pow.big { font-size: 30px; fill: #fff; }
 .restday .clip { width: 42%; flex: none; border-radius: 12px; }
 .restday b { font-size: 16px; }
 .restday p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+
+/* runs */
+.runcard .rhead { display: flex; align-items: center; gap: 8px; }
+.runcard .rhead b { font-size: 17px; }
+.runcard .rhead .muted { flex: 1; font-size: 14px; }
+.runcard .rhead .small-btn { min-height: 36px; padding: 0 12px; font-size: 13px; color: var(--muted); }
+.runcard .rhead .small-btn.del { background: var(--warn); color: #fff; }
+.rstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 8px; margin: 12px 0; }
+.rstats div { display: flex; flex-direction: column; }
+.rstats b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.rstats span { font-size: 12px; color: var(--muted); }
+.zbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.z1 { background: #8e949b; } .z2 { background: #3d8fd6; } .z3 { background: #4caf63; } .z4 { background: #eb9a2c; } .z5 { background: #e0503f; }
+.zleg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.zleg span { display: inline-flex; align-items: center; gap: 4px; }
+.zleg span.top { color: var(--text); font-weight: 700; }
+.zleg i { width: 8px; height: 8px; border-radius: 50%; }
+.zsum { font-size: 13px; margin: 6px 0 0; }
+.hrwrap { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.hrwrap span { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+svg.hrline { flex: 1; height: 44px; min-width: 0; }
+svg.hrline polyline { fill: none; stroke: #e0503f; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.rhelp { font-size: 14px; margin: 8px 2px 4px; }

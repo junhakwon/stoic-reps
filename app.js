@@ -30,6 +30,7 @@ function defaults() {
       quickEx: "pullup",                           // exercise picked in the quick-add bar                  // rest timer after a working set, seconds (0 = off)
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
       bodyweight: BODYWEIGHT_DEFAULT,
+      maxHr: 0,                                    // for heart-rate zones; 0 = use the highest seen on a run (at least 185)
     },
     goals: [
       { id: 1, ex: "pushup", reps: 40, kg: 0, label: "40 push-ups unbroken" },
@@ -39,6 +40,7 @@ function defaults() {
       { id: 5, ex: "squat", reps: 10, kg: 20, label: "10 goblet squats with 20 kg" },
     ],
     sets: [],          // { t, ex, reps, kg, v (push-up variation / pull-up type), gtg }
+    runs: [],          // { t (start), dur (s), dist (m), kcal, avgHr, maxHr, sport, hr: { bpm: s }, trace, src: fit|gpx|tcx|hand }
     body: {},          // "YYYY-MM-DD": kg
     daily: {},         // "YYYY-MM-DD": { creatine, protein }
     favs: [],          // quote ids
@@ -56,6 +58,7 @@ function fillIn(s) {
   const d = defaults().settings;
   s.settings = Object.assign({}, d, s.settings);
   for (const k of ["ranges", "gtg", "gtgKg", "rest", "baseline"]) s.settings[k] = Object.assign({}, d[k], s.settings[k]);
+  if (!Array.isArray(s.runs)) s.runs = [];
   return s;
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("Could not save on this device", true); } }
@@ -85,6 +88,8 @@ const fmtKg = kg => (Math.round(kg * 10) / 10).toString();
 const setsOf = ex => S.sets.filter(s => s.ex === ex);
 const bwOn = k => { const ks = Object.keys(S.body).filter(d => d <= k).sort(); return ks.length ? S.body[ks[ks.length - 1]] : S.settings.bodyweight; };
 const epley = (w, r) => w * (1 + r / 30);
+// a day counts as active when you logged a set or a run
+const activeDays = () => new Set(S.sets.map(s => dayKey(s.t)).concat(S.runs.map(r => dayKey(r.t))));
 
 function range(ex, kg) {
   const r = S.settings.ranges[ex];
@@ -153,7 +158,7 @@ const TRAIN_THEMES = ["discipline", "effort"];
 function hash(str) { let h = 2166136261; for (const c of str) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
 function quoteOfDay() {
   // one quote per day; once you have trained that day it switches to a discipline or effort quote
-  const d = dayKey(), trained = S.sets.some(s => dayKey(s.t) === d);
+  const d = dayKey(), trained = activeDays().has(d);
   const stale = !S.qotd || S.qotd.d !== d || !QUOTES[S.qotd.id] || (trained && !TRAIN_THEMES.includes(QUOTES[S.qotd.id].th));
   if (stale) {
     const pool = trained ? QUOTES.filter(q => TRAIN_THEMES.includes(q.th)) : QUOTES;
@@ -180,10 +185,10 @@ function toggleFav(id) {
 }
 
 // ---------- streak / totals ----------
-// the streak counts training days; one rest day in any 7 keeps it going, two missed days in a row end it.
+// the streak counts training days (a run counts on its own); one rest day in any 7 keeps it going, two missed days in a row end it.
 // status per day: on (trained), rday (the allowed rest day), off (missed), now (today, not trained yet)
 function streakInfo() {
-  const days = new Set(S.sets.map(s => dayKey(s.t))), today = dayKey(), status = {};
+  const days = activeDays(), today = dayKey(), status = {};
   if (!days.size) return { n: 0, best: 0, status, restOk: false, row: 0 };
   let run = 0, best = 0, lastRest = null, row = 0;
   for (let k = [...days].sort()[0]; k <= today; k = addDays(k, 1)) {
@@ -271,7 +276,7 @@ function suitUp(n) {
 function logSet(set) {
   const pv = set.ex === "pullup" ? (set.v || 0) : 0, prBw = maxBw(set.ex, pv);
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
-  const before = streak(), first = !logDay && !S.sets.some(s => dayKey(s.t) === dayKey());
+  const before = streak(), first = !logDay && !activeDays().has(dayKey());
   S.sets.push(set); lastSet = set; save();
   flashAt = Date.now(); flashM = musclesOf(set); afterLog(before, first, set);
   // records
@@ -371,6 +376,95 @@ function restDone() {
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) tickRest(); });
 
+// ---------- runs: from a Garmin file (garmin.js reads it on the phone) or typed in by hand ----------
+const KIND = { run: "run", walk: "walk", hike: "hike", ride: "ride", swim: "swim", activity: "activity" };
+const RUN_MUSCLES = { run: ["quads", "calves"], walk: ["quads", "calves"], hike: ["quads", "calves"], ride: ["quads"], swim: ["shoulders", "lats"], activity: ["quads", "calves"] };
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const fmtDur = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`; };
+const fmtKm = m => (m / 1000).toFixed(2);
+const paceOf = r => r.dist > 0 && r.sport !== "ride" && r.sport !== "swim" ? fmtDur(r.dur / (r.dist / 1000)) + " /km" : "";
+const maxHr = () => S.settings.maxHr || Math.max(185, ...S.runs.map(r => r.maxHr || 0));
+// Garmin's default zones, as % of max heart rate: Z1 under 60, Z2 60–70, Z3 70–80, Z4 80–90, Z5 90 and up
+const ZONES = [["Z1", "Warm-up"], ["Z2", "Easy"], ["Z3", "Aerobic"], ["Z4", "Threshold"], ["Z5", "Maximum"]];
+function zonesOf(r) {
+  const mx = maxHr(), z = [0, 0, 0, 0, 0];
+  for (const b in r.hr || {}) z[Math.max(0, Math.min(4, Math.floor((b / mx * 100 - 50) / 10)))] += r.hr[b];
+  return z;
+}
+let pendingRunDel = null;   // start time of the run waiting for a second tap on Remove
+function runCard(r) {
+  const z = zonesOf(r), tot = z.reduce((a, b) => a + b, 0), top = tot ? z.indexOf(Math.max(...z)) : -1;
+  const at = new Date(r.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const tr = r.trace || [], lo = Math.min(...tr), hi = Math.max(...tr);
+  const line = tr.length > 1 ? `<svg class="hrline" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true"><polyline points="${tr.map((v, i) =>
+    `${(i / (tr.length - 1) * 300).toFixed(1)},${(40 - (v - lo) / Math.max(1, hi - lo) * 36).toFixed(1)}`).join(" ")}"/></svg>` : "";
+  const stat = (v, l) => v ? `<div><b>${v}</b><span>${l}</span></div>` : "";
+  return `<div class="card runcard"><div class="rhead"><b>${cap(KIND[r.sport] || "run")}</b><span class="muted">${at} · ${r.src === "hand" ? "by hand" : "Garmin"}</span>
+      <button class="small-btn ${pendingRunDel === r.t ? "del" : ""}" data-run-del="${r.t}">${pendingRunDel === r.t ? "Remove?" : "Remove"}</button></div>
+    <div class="rstats">${stat(fmtDur(r.dur), "time")}${stat(r.dist ? fmtKm(r.dist) : "", "km")}${stat(paceOf(r).replace(" /km", ""), "per km")}
+      ${stat(r.avgHr, "avg bpm")}${stat(r.maxHr, "max bpm")}${stat(r.kcal, "kcal")}</div>
+    ${tot ? `<div class="zbar" role="img" aria-label="Heart-rate zones: ${z.map((s, i) => `${ZONES[i][0]} ${Math.round(100 * s / tot)}%`).join(", ")}">${z.map((s, i) => s ? `<i class="z${i + 1}" style="flex:${s}"></i>` : "").join("")}</div>
+      <div class="zleg">${z.map((s, i) => `<span class="${i === top ? "top" : ""}"><i class="z${i + 1}"></i>${ZONES[i][0]} ${fmtDur(s)}</span>`).join("")}</div>
+      <p class="muted zsum">Mostly ${ZONES[top][0]} (${ZONES[top][1].toLowerCase()}) · zones from max ${maxHr()} bpm</p>` : ""}
+    ${line ? `<div class="hrwrap">${line}<span class="muted">${lo}–${hi} bpm</span></div>` : ""}</div>`;
+}
+function runRow(st) {
+  const last = S.runs[S.runs.length - 1], g = Math.max(st.quads.g, st.calves.g);
+  const sub = last ? `Last: ${last.dist ? fmtKm(last.dist) + " km, " : ""}${fmtDur(last.dur)} · ${agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5))}` : "Add from a Garmin file or by hand";
+  return `<button class="exrow" data-run-add><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
+      <span class="t"><b>Run</b><span class="nx">${esc(sub)}</span></span>
+      <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
+}
+function openRunSheet() {
+  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Add a run</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
+    <button class="big primary" data-act="run-file">Choose Garmin file</button><input id="run-file" type="file" hidden>
+    <p class="muted rhelp">In Safari, open the run on connect.garmin.com, tap ⚙ → <b>Export Original</b>, then pick the .zip here. GPX and TCX files work too. The file is read on this phone; nothing is uploaded.</p>
+    <h3>Or by hand${logDay ? ` · ${dayLabel(logDay)}` : ""}</h3>
+    <div class="inrow"><label>Minutes</label><input id="rn-min" type="number" inputmode="decimal" placeholder="30"></div>
+    <div class="inrow"><label>Distance (km)</label><input id="rn-km" type="number" inputmode="decimal" step="0.01" placeholder="5"></div>
+    <div class="inrow"><label>Average heart rate</label><input id="rn-hr" type="number" inputmode="numeric" placeholder="bpm"></div>
+    <button class="big" data-act="run-save">Save run</button>`;
+  $("#modal").hidden = false;
+}
+function addRun(r) {
+  if (S.runs.some(x => Math.abs(x.t - r.t) < 60000)) { toast("That run is already in", true); return; }
+  const k = dayKey(r.t), before = streak(), first = k === dayKey() && !activeDays().has(k);
+  S.runs.push(r); S.runs.sort((a, b) => a.t - b.t); save();
+  $("#modal").hidden = true; pendingRunDel = null;
+  // show the day the run went to
+  logDay = k === dayKey() || k < addDays(dayKey(), -30) ? null : k; tab = "home";
+  flashAt = Date.now(); flashM = RUN_MUSCLES[r.sport] || RUN_MUSCLES.run; flashWord = "ZOOM!";
+  render(); window.scrollTo(0, 0);
+  toast(`${cap(KIND[r.sport] || "run")} added: ${r.dist ? fmtKm(r.dist) + " km in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}${k === dayKey() ? "" : ` (${dayLabel(k)})`}`);
+  const n = streak(), r0 = rankOf(before), r1 = rankOf(n);
+  if (n > before && r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, n), 60);
+  else if (first) setTimeout(() => suitUp(n), 60);
+}
+function saveHandRun() {
+  const min = parseFloat($("#rn-min").value), km = parseFloat($("#rn-km").value), hr = parseInt($("#rn-hr").value);
+  if (!(min > 0 && min < 1440)) { toast("Enter how many minutes you ran", true); return; }
+  const dur = Math.round(min * 60);
+  addRun({ t: logDay ? stamp() : Date.now() - dur * 1000, dur, dist: km > 0 ? Math.round(km * 1000) : null, kcal: null,
+    avgHr: hr > 30 && hr < 240 ? hr : null, maxHr: null, sport: "run", hr: hr > 30 && hr < 240 ? { [hr]: dur } : {}, trace: [], src: "hand" });
+}
+function runsProgress() {
+  if (!S.runs.length) return "";
+  const wk = weekStart(dayKey()), weeks = [];
+  for (let i = 7; i >= 0; i--) { const w = addDays(wk, -7 * i), rs = S.runs.filter(r => weekStart(dayKey(r.t)) === w);
+    weeks.push({ x: shortDate(w), y: Math.round(rs.reduce((a, r) => a + (r.dist || 0), 0) / 100) / 10 }); }
+  const thisWk = S.runs.filter(r => weekStart(dayKey(r.t)) === wk), since = addDays(dayKey(), -29);
+  const month = S.runs.filter(r => dayKey(r.t) >= since), withHr = month.filter(r => r.avgHr);
+  const list = S.runs.slice(-6).reverse().map(r => `<div class="item"><span>${dayLabel(dayKey(r.t))} · ${cap(KIND[r.sport] || "run")}</span>
+      <b>${r.dist ? fmtKm(r.dist) + " km · " : ""}${fmtDur(r.dur)}${r.avgHr ? ` · ${r.avgHr} bpm` : ""}</b></div>`).join("");
+  return `<h3>Runs</h3><div class="stats">
+      <div class="stat"><b>${fmtKm(thisWk.reduce((a, r) => a + (r.dist || 0), 0))}</b><span>km this week</span></div>
+      <div class="stat"><b>${fmtDur(thisWk.reduce((a, r) => a + r.dur, 0))}</b><span>time this week</span></div>
+      <div class="stat"><b>${month.length}</b><span>runs, last 30 days</span></div>
+      <div class="stat"><b>${withHr.length ? Math.round(withHr.reduce((a, r) => a + r.avgHr, 0) / withHr.length) : "—"}</b><span>avg heart rate, last 30 days</span></div></div>
+    <div class="card" style="margin-top:10px"><p class="muted" style="margin:0 0 4px;font-size:13px">Kilometres per week</p>${barChart(weeks, "kilometres per week")}</div>
+    <div class="card list">${list}</div>`;
+}
+
 // ---------- screens ----------
 let tab = "home", progEx = "pullup";
 function render() {
@@ -398,7 +492,8 @@ function homeView() {
         <p class="hint">${nextHint(st)}</p></div></div>
     ${restDayCard()}
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
-    <div class="card list">${rows}</div>
+    ${S.runs.filter(r => dayKey(r.t) === d).map(runCard).join("")}
+    <div class="card list">${rows}${runRow(st)}</div>
     ${quickBar()}`;
 }
 
@@ -466,10 +561,10 @@ function lineChart(points, opts = {}) {      // points: [{ x: label, y, tag }]
     <text x="${W - P.r}" y="${H - 4}" font-size="11" fill="var(--muted)" text-anchor="end">${esc(lastP.x)}</text>
     <text x="${Math.min(W - P.r, x(points.length - 1))}" y="${y(lastP.y) - 8}" font-size="12" font-weight="700" fill="var(--text)" text-anchor="end">${esc(lastP.tag || lastP.y)}</text></svg>`;
 }
-function barChart(bars) {          // [{ x, y }]
+function barChart(bars, label = "weekly reps") {          // [{ x, y }]
   const W = 340, H = 150, P = { l: 6, r: 6, t: 18, b: 22 }, max = Math.max(1, ...bars.map(b => b.y));
   const bw = (W - P.l - P.r) / bars.length;
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="weekly reps">${bars.map((b, i) => {
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${bars.map((b, i) => {
     const h = (H - P.t - P.b) * b.y / max, x = P.l + i * bw + 4, yy = H - P.b - h;
     return `<rect x="${x}" y="${yy}" width="${bw - 8}" height="${Math.max(h, 1)}" rx="4" fill="${i === bars.length - 1 ? "var(--accent)" : "var(--card2)"}"/>
       ${b.y ? `<text x="${x + (bw - 8) / 2}" y="${yy - 4}" font-size="11" fill="var(--text)" text-anchor="middle">${b.y}</text>` : ""}
@@ -504,11 +599,12 @@ const musclesOf = s => (MUSCLE_OF[s.ex] || []).concat(s.ex === "pullup" && s.v =
 const glow = d => d <= 1 ? 1 : d === 2 ? .8 : d === 3 ? .6 : d <= 6 ? .35 : 0;   // days since trained -> color strength
 function muscleState() {
   const last = {}, by = {}, today = dayKey();
-  for (const s of S.sets) { const k = dayKey(s.t); for (const m of musclesOf(s)) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = s.ex; } }
+  for (const s of S.sets) { const k = dayKey(s.t); for (const m of musclesOf(s)) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = EX[s.ex].name.toLowerCase(); } }
+  for (const r of S.runs) { const k = dayKey(r.t); for (const m of RUN_MUSCLES[r.sport] || RUN_MUSCLES.run) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = KIND[r.sport] || "run"; } }
   const st = {};
   for (const m in MUSCLES) {
     const d = last[m] ? Math.round((keyToDate(today) - keyToDate(last[m])) / 864e5) : null;
-    st[m] = { d, g: d === null ? 0 : glow(d), ex: by[m] };
+    st[m] = { d, g: d === null ? 0 : glow(d), what: by[m] };
   }
   return st;
 }
@@ -596,7 +692,7 @@ function bodySvg(st, cls) {
 function bodyMap() {
   const st = muscleState(), today = dayKey(), since = addDays(today, -29);
   let days = 0, creatine = 0;
-  const trained = new Set(S.sets.map(s => dayKey(s.t)));
+  const trained = activeDays();
   for (let k = since; k <= today; k = addDays(k, 1)) { if (trained.has(k)) days++; if ((S.daily[k] || {}).creatine) creatine++; }
   const rows = Object.keys(MUSCLES).map(m => `<button class="mrow ${st[m].g ? "" : "off"}" data-muscle="${m}">
       <i style="opacity:${st[m].g ? .3 + .7 * st[m].g : 1}"></i><span>${MUSCLES[m].name}</span><small>${agoText(st[m].d)}</small></button>`).join("");
@@ -620,8 +716,9 @@ function nextHint(st) {
 function muscleInfo(m) {
   const s = muscleState()[m], how = Object.keys(MUSCLE_OF).filter(ex => MUSCLE_OF[ex].includes(m)).map(ex => EX[ex].name.toLowerCase());
   if (m === "core") how.push("L-sit pull-ups");
+  if (m === "quads" || m === "calves") how.push("a run");
   toast(s.d === null ? `${MUSCLES[m].name}: not trained yet. Try ${how.join(" or ")}.`
-    : `${MUSCLES[m].name}: last trained ${agoText(s.d)} (${EX[s.ex].name.toLowerCase()}).${s.g ? "" : " Gone gray — time for " + how.join(" or ") + "."}`);
+    : `${MUSCLES[m].name}: last trained ${agoText(s.d)} (${s.what}).${s.g ? "" : " Gone gray — time for " + how.join(" or ") + "."}`);
 }
 
 function progressView() {
@@ -661,7 +758,7 @@ function progressView() {
       <div class="bar"><i style="width:${p.done ? 100 : pct}%"></i></div></div>
       ${g.manual ? `<button data-goal-done="${g.id}">${g.done ? "↺" : "✓"}</button>` : ""}</div>`;
   }).join("");
-  return `<h1>Progress</h1>${bodyMap()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
+  return `<h1>Progress</h1>${bodyMap()}${runsProgress()}<h3>By exercise</h3><div class="chips">${chips}</div>${stats}
     <h3>Best set by day</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
     <h3>Total reps per week</h3><div class="card">${barChart(weeks)}</div>
@@ -686,6 +783,9 @@ function moreView() {
       <div class="inrow"><label>Quick push-up set</label><input type="number" inputmode="numeric" data-gtg="pushup" value="${st.gtg.pushup}"></div>
       <div class="inrow"><label>Quick knee-raise set</label><input type="number" inputmode="numeric" data-gtg="kneeraise" value="${st.gtg.kneeraise}"></div>
       <p class="muted" style="font-size:14px">Keep groove pull-up sets at or under ${Math.floor(0.6 * maxBw("pullup"))} (60% of your max of ${maxBw("pullup")}).</p></div>
+    <h3>Running</h3><div class="card">
+      <div class="inrow"><label>Max heart rate (bpm)</label><input type="number" inputmode="numeric" data-maxhr placeholder="${maxHr()}" value="${st.maxHr || ""}"></div>
+      <p class="muted" style="font-size:14px">Sets your heart-rate zones. Use the max shown in Garmin Connect (Heart Rate Zones). Left empty, the app uses ${maxHr()}: the highest it has seen on a run, and never under 185.</p></div>
     <h3>Rest timer</h3><div class="card">
       <div class="inrow"><label>After a bodyweight set (sec)</label><input type="number" inputmode="numeric" data-rest-set="bw" value="${st.rest.bw}"></div>
       <div class="inrow"><label>After a weighted set (sec)</label><input type="number" inputmode="numeric" data-rest-set="wt" value="${st.rest.wt}"></div>
@@ -715,6 +815,12 @@ document.addEventListener("click", e => {
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
+  if (d.runAdd !== undefined) { openRunSheet(); return; }
+  if (d.act === "run-file") { $("#run-file").click(); return; }
+  if (d.act === "run-save") { saveHandRun(); return; }
+  if (d.runDel !== undefined) { const t = +d.runDel;
+    if (pendingRunDel === t) { S.runs = S.runs.filter(r => r.t !== t); pendingRunDel = null; save(); toast("Run removed"); } else pendingRunDel = t;
+    render(); return; }
   if (d.quick) { quickSet(d.quick); return; }
   if (d.qex) { S.settings.quickEx = d.qex; save(); render(); return; }
   if (d.gvar !== undefined) { S.settings.gtgVar = Object.assign({}, S.settings.gtgVar, { pullup: +d.gvar }); save(); render(); return; }
@@ -779,6 +885,12 @@ document.addEventListener("change", e => {
     const [ex, sub] = key.split("."); const arr = sub ? S.settings.ranges[ex][sub] : S.settings.ranges[ex];
     arr[+i] = v; if (arr[0] > arr[1]) arr.reverse(); save(); return;
   }
+  if (t.id === "run-file" && t.files[0]) {
+    const f = t.files[0]; toast("Reading " + f.name + "…");
+    f.arrayBuffer().then(b => Garmin.parse(f.name, b)).then(addRun).catch(err => toast("Couldn't read that file: " + err.message, true));
+    t.value = ""; return;
+  }
+  if (t.dataset.maxhr !== undefined) { const v = parseInt(t.value); S.settings.maxHr = v >= 120 && v <= 230 ? v : 0; save(); return; }
   if (t.dataset.restSet) { const v = parseInt(t.value); if (v >= 0 && v <= 900) { S.settings.rest[t.dataset.restSet] = v; save(); } return; }
   if (t.dataset.gtg) {
     const v = parseInt(t.value); if (!(v > 0)) return; S.settings.gtg[t.dataset.gtg] = v; save();
