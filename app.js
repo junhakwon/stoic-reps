@@ -431,9 +431,13 @@ function openRunSheet() {
   $("#modal").hidden = false;
 }
 function addRun(r) {
-  if (S.runs.some(x => Math.abs(x.t - r.t) < 60000)) { toast("That run is already in", true); return; }
-  const k = dayKey(r.t), before = streak(), first = k === dayKey() && !activeDays().has(k);
+  // the same run again: a Garmin file (exact) replaces an Apple Health or by-hand entry (approximate); otherwise it's a repeat
+  const FILE = ["fit", "gpx", "tcx"], dup = S.runs.find(x => Math.abs(x.t - r.t) < 5 * 60000 || (x.t < r.t + r.dur * 1000 && r.t < x.t + x.dur * 1000));
+  if (dup && !(FILE.includes(r.src) && !FILE.includes(dup.src))) { toast("That run is already in", true); return; }
+  if (dup) S.runs.splice(S.runs.indexOf(dup), 1);
+  const k = dayKey(r.t), before = streak(), first = !dup && k === dayKey() && !activeDays().has(k);
   S.runs.push(r); S.runs.sort((a, b) => a.t - b.t); save();
+  if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtKm(r.dist) + " km in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
   $("#modal").hidden = true; pendingRunDel = null;
   // show the day the run went to
   logDay = k === dayKey() || k < addDays(dayKey(), -30) ? null : k; tab = "home";
