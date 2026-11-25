@@ -262,10 +262,47 @@ svg.body .aura { transform-box: fill-box; transform-origin: center; animation: b
 svg.body .flash polygon { fill: #ffc070; }
 svg.body .flash { opacity: 0; animation: bm-flash 1.5s ease-out; }
 @keyframes bm-flash { 20% { opacity: .95; } 100% { opacity: 0; } }
-.fxclip { width: 100%; max-height: 220px; object-fit: cover; border-radius: 16px; display: block; margin-bottom: 8px; background: var(--card2); }
+.clip { width: 100%; background-color: #000; background-repeat: no-repeat; }
+.fxclip { border-radius: 16px; margin-bottom: 8px; }
 .rankup { margin: 10px 0 0; color: var(--accent); font-weight: 700; }
 .suit { position: fixed; z-index: 18; inset: auto 16px calc(env(safe-area-inset-bottom) + 84px); background: #000; border-radius: 22px; overflow: hidden;
   box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.45); animation: toast-in 200ms ease-out; cursor: pointer; }
 .suit[hidden] { display: none; }
-.suit img { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.suit .clip { max-height: 46vh; aspect-ratio: 271/360; width: auto; margin: 0 auto; }
 .suit p { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: 28px 16px 14px; background: linear-gradient(transparent, rgba(0,0,0,.75)); color: #fff; font-size: 20px; }
+
+/* GO banner when the rest ends */
+.restgo { position: fixed; z-index: 19; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 10px); border-radius: 20px; overflow: hidden; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.45); animation: toast-in 180ms ease-out; }
+.restgo[hidden] { display: none; }
+.restgo b { position: absolute; right: 16px; bottom: 10px; font: 900 44px/1 "Arial Black", Impact, system-ui, sans-serif; color: #fff;
+  -webkit-text-stroke: 2px #1a1408; letter-spacing: .02em; transform: rotate(-6deg); }
+/* comic word over the figure */
+svg.body .pow { font: 900 28px "Arial Black", Impact, system-ui, sans-serif; fill: #ffd23f; stroke: #1a1408; stroke-width: 5px; paint-order: stroke;
+  stroke-linejoin: round; transform-box: fill-box; transform-origin: center; animation: pow 1.5s ease-out both; }
+svg.body .pow.big { font-size: 30px; fill: #fff; }
+@keyframes pow { 0% { opacity: 0; transform: scale(.3) rotate(-14deg); } 14% { opacity: 1; transform: scale(1.25) rotate(-8deg); }
+  28% { transform: scale(1) rotate(-8deg); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px) scale(1.05) rotate(-8deg); } }
+/* streak: day dots joined by web threads */
+.sdots { display: grid; grid-template-columns: repeat(7, 1fr); position: relative; }
+.sd { position: relative; z-index: 1; }
+.sdots .threads { position: absolute; left: 0; top: 0; width: 100%; height: 14px; overflow: visible; }
+.threads path { fill: none; stroke: color-mix(in srgb, var(--text) 55%, transparent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.threads path.rd, .threads path.pend { stroke-dasharray: 3 3; }
+.threads path.pend { stroke: color-mix(in srgb, var(--text) 30%, transparent); }
+.threads path.cut { stroke: color-mix(in srgb, var(--warn) 70%, transparent); }
+.sd.rday i { background: var(--card); box-shadow: inset 0 0 0 2px var(--accent); }
+/* progress to the next rank as a web line */
+.sbar.web { height: 12px; background: none; overflow: visible; position: relative; border-radius: 0; }
+.sbar.web::before { content: ""; position: absolute; left: 0; right: 0; top: 5px; border-top: 1.5px dashed var(--line); }
+.sbar.web i { position: absolute; left: 0; top: 4px; height: 3px; border-radius: 2px; background: var(--accent); }
+.sbar.web i::after { content: ""; position: absolute; right: -7px; top: -6px; width: 14px; height: 14px; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='black' stroke-width='1.3'%3E%3Cpath d='M7 0v14M0 7h14M2 2l10 10M12 2L2 12'/%3E%3Ccircle cx='7' cy='7' r='3.2'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='black' stroke-width='1.3'%3E%3Cpath d='M7 0v14M0 7h14M2 2l10 10M12 2L2 12'/%3E%3Ccircle cx='7' cy='7' r='3.2'/%3E%3C/svg%3E") center / contain no-repeat; }
+.sbar.web.shoot i { animation: web-shoot .7s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes web-shoot { from { width: 0; } }
+/* recovery day */
+.restday { display: flex; gap: 12px; align-items: center; border-radius: 20px; }
+.restday .clip { width: 42%; flex: none; border-radius: 12px; }
+.restday b { font-size: 16px; }
+.restday p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }

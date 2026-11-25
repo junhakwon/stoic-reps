@@ -180,18 +180,25 @@ function toggleFav(id) {
 }
 
 // ---------- streak / totals ----------
-function streak() {
-  const days = new Set(S.sets.map(s => dayKey(s.t)));
-  let k = dayKey(); if (!days.has(k)) k = addDays(k, -1);
-  let n = 0; while (days.has(k)) { n++; k = addDays(k, -1); }
-  return n;
+// the streak counts training days; one rest day in any 7 keeps it going, two missed days in a row end it.
+// status per day: on (trained), rday (the allowed rest day), off (missed), now (today, not trained yet)
+function streakInfo() {
+  const days = new Set(S.sets.map(s => dayKey(s.t))), today = dayKey(), status = {};
+  if (!days.size) return { n: 0, best: 0, status, restOk: false, row: 0 };
+  let run = 0, best = 0, lastRest = null, row = 0;
+  for (let k = [...days].sort()[0]; k <= today; k = addDays(k, 1)) {
+    const prev = addDays(k, -1);
+    if (days.has(k)) { run++; row = days.has(prev) ? row + 1 : 1; status[k] = "on"; }
+    else if (k === today) status[k] = "now";
+    else if (run && days.has(prev) && (!lastRest || addDays(lastRest, 7) <= k)) { lastRest = k; status[k] = "rday"; row = 0; }
+    else { if (status[prev] === "rday") status[prev] = "off"; run = 0; lastRest = null; row = 0; status[k] = "off"; }
+    best = Math.max(best, run);
+  }
+  const restOk = !days.has(today) && days.has(addDays(today, -1)) && run > 0 && (!lastRest || addDays(lastRest, 7) <= today);
+  return { n: run, best, status, restOk, row };
 }
-function bestStreak() {
-  const days = [...new Set(S.sets.map(s => dayKey(s.t)))].sort();
-  let best = 0, run = 0, prev = null;
-  for (const k of days) { run = prev && addDays(prev, 1) === k ? run + 1 : 1; best = Math.max(best, run); prev = k; }
-  return best;
-}
+const streak = () => streakInfo().n;
+const bestStreak = () => streakInfo().best;
 // Stoic ranks earned by an unbroken run of training days
 const RANKS = [[0, "Beginner"], [3, "Initiate"], [7, "Student"], [14, "Practitioner"], [30, "Disciple"], [60, "Stoic"], [100, "Philosopher"], [180, "Sage"], [365, "Marcus"]];
 function rankOf(n) {
@@ -202,27 +209,63 @@ function weekReps(ex, wk) {
   return setsOf(ex).filter(s => weekStart(dayKey(s.t)) === wk).reduce((a, s) => a + s.reps, 0);
 }
 
+// ---------- clips: sprite sheets (fx-*.webp, cut from the GIFs) played frame by frame ----------
+const CLIPS = {
+  dive: { w: 400, h: 225, cols: 10, rows: 3, n: 25, ms: 83 }, suit: { w: 271, h: 360, cols: 14, rows: 2, n: 24, ms: 100 },
+  land: { w: 400, h: 225, cols: 10, rows: 2, n: 16, ms: 60 }, shoot: { w: 400, h: 225, cols: 10, rows: 2, n: 18, ms: 60 },
+  walk: { w: 360, h: 180, cols: 11, rows: 2, n: 20, ms: 70 }, swing: { w: 400, h: 224, cols: 10, rows: 3, n: 30, ms: 98 },
+};
+const clip = (name, cls = "") => `<div class="clip ${cls}" data-clip="${name}" style="aspect-ratio:${CLIPS[name].w}/${CLIPS[name].h}" aria-hidden="true"></div>`;
+function startClips() {
+  document.querySelectorAll(".clip[data-clip]:not([data-on])").forEach(el => {
+    const c = CLIPS[el.dataset.clip], loop = el.classList.contains("loop"); el.dataset.on = "1";
+    el.style.backgroundImage = `url(fx-${el.dataset.clip}.webp)`; el.style.backgroundSize = `${c.cols * 100}% ${c.rows * 100}%`;
+    const show = i => { el.style.backgroundPosition = `${c.cols > 1 ? (i % c.cols) / (c.cols - 1) * 100 : 0}% ${c.rows > 1 ? Math.floor(i / c.cols) / (c.rows - 1) * 100 : 0}%`; };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { show(Math.floor(c.n / 2)); return; }
+    let i = 0; show(0);
+    const t = setInterval(() => {
+      if (!el.isConnected) { clearInterval(t); return; }
+      if (++i >= c.n) { if (!loop) { clearInterval(t); return; } i = 0; }
+      show(i);
+    }, c.ms);
+  });
+}
+
 // ---------- logging ----------
 let lastSet = null;   // the set the "Undo" button removes
 // after a set is logged: a new rank plays the dive clip; the first set of the day plays the suit-up clip
-function afterLog(before, first) {
+function afterLog(before, first, set) {
   const n = streak(), r0 = rankOf(before), r1 = rankOf(n), up = n > before && r1.name !== r0.name && r1.from > 0;
-  if (!up && !first) return;
+  // the exercise is done for today when its planned number of working sets is reached
+  const planned = suggest(set.ex, true).sets, working = S.sets.filter(s => s.ex === set.ex && !s.gtg && dayKey(s.t) === dayKey()).length;
+  const done = !logDay && !set.gtg && working === planned;
+  if (!up && !first && !done) return;
   setTimeout(() => {   // after the caller has shown its own toast or record card
-    if (up && !$("#modal").hidden) $("#modal-body .pr-card").insertAdjacentHTML("beforeend", `<p class="rankup">And a new rank: <b>${r1.name}</b> · ${n} days</p>`);
+    const open = !$("#modal").hidden, card = $("#modal-body .pr-card");
+    if (up && open) card.insertAdjacentHTML("beforeend", `<p class="rankup">And a new rank: <b>${r1.name}</b> · ${n} days</p>`);
     else if (up) rankCard(r1, n);
-    else if ($("#modal").hidden) suitUp(n);
+    else if (done && open) card.insertAdjacentHTML("beforeend", `<p class="rankup">${EX[set.ex].name} done for today.</p>`);
+    else if (done) doneCard(set.ex);
+    else if (!open) suitUp(n);
   }, 60);
 }
+function doneCard(ex) {
+  const today = S.sets.filter(s => dayKey(s.t) === dayKey()), mine = today.filter(s => s.ex === ex && !s.gtg);
+  const reps = arr => arr.reduce((t, s) => t + s.reps, 0);
+  $("#modal-body").innerHTML = `<div class="pr-card">${clip("land", "fxclip loop")}<h2>${EX[ex].name} done</h2>
+    <p>${mine.length} sets · ${reps(mine)} reps${mine[0] && mine[0].kg ? ` at +${fmtKg(mine[0].kg)} kg` : ""}. Today so far: ${today.length} sets, ${reps(today)} reps.</p></div>
+    ${quoteCard(nextQuote(["discipline", "effort"], true))}<button class="big primary" data-close-modal>Done for now</button>`;
+  $("#modal").hidden = false;
+}
 function rankCard(r, n) {
-  $("#modal-body").innerHTML = `<div class="pr-card"><img class="fxclip" src="fx-dive.gif" alt=""><h2>${r.name}</h2>
+  $("#modal-body").innerHTML = `<div class="pr-card">${clip("swing", "fxclip")}<h2>${r.name}</h2>
     <p>${n} days without a break. ${r.next ? `Next: <b>${r.next[1]}</b> at ${r.next[0]} days.` : "The highest rank there is."}</p></div>
     ${quoteCard(nextQuote(["discipline", "effort"], true))}<button class="big primary" data-close-modal>Keep going</button>`;
   $("#modal").hidden = false;
 }
 let suitT = 0;
 function suitUp(n) {
-  const el = $("#suit"); el.innerHTML = `<img src="fx-suit.gif" alt=""><p>Day ${n}. <b>Suit up.</b></p>`; el.hidden = false;
+  const el = $("#suit"); el.innerHTML = `${clip("suit")}<p>Day ${n}. <b>Suit up.</b></p>`; el.hidden = false;
   clearTimeout(suitT); suitT = setTimeout(() => { el.hidden = true; }, 2600);
 }
 function logSet(set) {
@@ -230,11 +273,12 @@ function logSet(set) {
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
   const before = streak(), first = !logDay && !S.sets.some(s => dayKey(s.t) === dayKey());
   S.sets.push(set); lastSet = set; save();
-  flashAt = Date.now(); flashM = musclesOf(set); afterLog(before, first);
+  flashAt = Date.now(); flashM = musclesOf(set); afterLog(before, first, set);
   // records
   let pr = null;
   if (!set.kg && (set.v || 0) === pv && set.reps > prBw) pr = `${set.reps} ${pv ? "L-sit " : ""}${EX[set.ex].one}s unbroken. Your best ever.`;
   else if (set.kg > 0 && !prior.some(s => s.kg >= set.kg && s.reps >= set.reps)) pr = `${set.reps} × +${fmtKg(set.kg)} kg is a new ${EX[set.ex].one} record.`;
+  flashWord = pr ? "NEW PR!" : set.gtg ? "THWIP!" : ["POW!", "WHAM!", "BAM!"][S.sets.length % 3];
   return pr;
 }
 const gtgKg = ex => QUICK_KG.includes(ex) ? (S.settings.gtgKg[ex] || 0) : 0;
@@ -278,7 +322,7 @@ function closeSheet() { $("#sheet").hidden = true; cur = null; render(); }
 // ---------- PR celebration ----------
 function celebrate(msg) {
   const q = nextQuote(["effort", "better", "discipline"], true);
-  $("#modal-body").innerHTML = `<div class="pr-card"><img class="fxclip" src="fx-dive.gif" alt=""><h2>New record</h2><p>${esc(msg)}</p></div>
+  $("#modal-body").innerHTML = `<div class="pr-card">${clip("dive", "fxclip")}<h2>New record</h2><p>${esc(msg)}</p></div>
     ${quoteCard(q)}<p class="muted" style="text-align:center">Well done. Now rest, eat your protein, and come back tomorrow.</p>
     <button class="big primary" data-close-modal>Continue</button>`;
   $("#modal").hidden = false;
@@ -312,6 +356,7 @@ function tickRest() {
   if (left <= 0) { stopRest(); restDone(); return; }
   $("#rest").hidden = false; $("#rest-t").textContent = `${Math.floor(left / 60)}:${pad(left % 60)}`;
 }
+let goT = 0;
 function restDone() {
   try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
   try {
@@ -321,7 +366,8 @@ function restDone() {
       o.connect(g); g.connect(beepCtx.destination); o.start(t0); o.stop(t0 + .2);
     }
   } catch (e) {}
-  toast("Rest over. Next set when you're ready.");
+  const go = $("#restgo"); go.innerHTML = `${clip("shoot")}<b>GO</b>`; go.hidden = false;
+  clearTimeout(goT); goT = setTimeout(() => { go.hidden = true; }, CLIPS.shoot.n * CLIPS.shoot.ms + 900);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) tickRest(); });
 
@@ -350,24 +396,43 @@ function homeView() {
         <button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
         <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
         <p class="hint">${nextHint(st)}</p></div></div>
+    ${restDayCard()}
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
     <div class="card list">${rows}</div>
     ${quickBar()}`;
 }
 
 // streak: number, Stoic rank, the last 7 days, progress to the next rank
+let lastBarPct = null;   // the web bar shoots out when its length changes (and once when the app opens)
 function streakCard() {
-  const n = streak(), best = bestStreak(), r = rankOf(n), today = dayKey(), done = S.sets.some(s => dayKey(s.t) === today);
-  const days = new Set(S.sets.map(s => dayKey(s.t)));
-  const dots = [6, 5, 4, 3, 2, 1, 0].map(i => { const k = addDays(today, -i), on = days.has(k);
-    return `<span class="sd ${on ? "on" : ""} ${i === 0 ? "now" : ""}" title="${k}"><i></i>${WD[keyToDate(k).getDay()][0]}</span>`; }).join("");
+  const info = streakInfo(), n = info.n, best = info.best, r = rankOf(n), today = dayKey(), st = info.status;
+  const done = st[today] === "on";
+  const ks = [6, 5, 4, 3, 2, 1, 0].map(i => addDays(today, -i)), kind = k => st[k] || (k === today ? "now" : "off");
+  const dots = ks.map(k => `<span class="sd ${kind(k)}" title="${k}${kind(k) === "rday" ? " · rest day" : ""}"><i></i>${WD[keyToDate(k).getDay()][0]}</span>`).join("");
+  // threads: whole between two kept days (dashed across a rest day), broken where a day was missed
+  const held = k => kind(k) === "on" || kind(k) === "rday";
+  const threads = ks.slice(0, 6).map((k, i) => {
+    const x1 = i * 100 + 50, x2 = x1 + 100, nx = ks[i + 1];
+    if (held(k) && (held(nx) || kind(nx) === "now")) return `<path class="${kind(k) === "rday" || kind(nx) === "rday" ? "rd" : ""}${kind(nx) === "now" ? " pend" : ""}" d="M${x1} 7Q${x1 + 50} 12 ${x2} 7"/>`;
+    return (held(k) ? `<path class="cut" d="M${x1} 7Q${x1 + 22} 10 ${x1 + 34} 14"/>` : "") + (held(nx) ? `<path class="cut" d="M${x2} 7Q${x2 - 22} 10 ${x2 - 34} 14"/>` : "");
+  }).join("");
   const pct = r.next ? Math.round(100 * (n - r.from) / (r.next[0] - r.from)) : 100;
+  const shoot = lastBarPct !== pct ? "shoot" : ""; lastBarPct = pct;
   const line = !n ? "Log a set to start a streak."
     : done ? (r.next ? `${r.next[0] - n} more day${r.next[0] - n === 1 ? "" : "s"} to <b>${r.next[1]}</b>` : "The highest rank. Keep going.")
+    : info.restOk ? "Rest day available. Your streak is safe today."
     : `<span class="risk">Train today to make it ${n + 1}.</span>`;
   return `<div class="streak"><div class="sn"><b>${n}</b><span>day streak<br><em>${r.name}</em></span></div>
-    <div class="sdots" aria-label="Trained ${[...Array(7)].filter((_, i) => days.has(addDays(today, -i))).length} of the last 7 days">${dots}</div>
-    <div class="sbar"><i style="width:${pct}%"></i></div><p class="sline">${line}${best > n ? ` · best ${best}` : ""}</p></div>`;
+    <div class="sdots" aria-label="Last 7 days: ${ks.filter(k => kind(k) === "on").length} trained${ks.some(k => kind(k) === "rday") ? ", 1 rest day" : ""}">
+      <svg class="threads" viewBox="0 0 700 20" preserveAspectRatio="none" aria-hidden="true">${threads}</svg>${dots}</div>
+    <div class="sbar web ${shoot}"><i style="width:${pct}%"></i></div><p class="sline">${line}${best > n ? ` · best ${best}` : ""}</p></div>`;
+}
+// on the day after two training days in a row, offer a recovery day (it doesn't break the streak)
+function restDayCard() {
+  const info = streakInfo();
+  if (logDay || !info.restOk || info.row < 2) return "";
+  return `<div class="card restday">${clip("walk", "loop")}<div><b>Recovery day</b>
+    <p>Two days in a row. You can rest today: a walk keeps the blood moving, and your streak holds.</p></div></div>`;
 }
 
 // one bar for grease-the-groove sets: pick the exercise, set reps (and kg / pull-up type), Add
@@ -452,7 +517,7 @@ const agoText = d => d === null ? "not yet" : d === 0 ? "today" : d === 1 ? "yes
 // the arms are cut out along the shoulder so they can sway on their own (points in spidey.png pixels)
 const ARM_L = "41,74 27,90 21,130 9,175 1,212 0,266 33,266 33,214 40,180 46,150 48,118 48,100 46,86";
 const ARM_R = "141,74 155,90 161,130 173,175 181,212 182,266 149,266 149,214 142,180 136,150 134,118 134,100 136,86";
-let figImg = null, figKey = "", figUrl = "", flashAt = 0, flashM = [];
+let figImg = null, figKey = "", figUrl = "", flashAt = 0, flashM = [], flashWord = "";
 function loadFig() {
   if (figImg !== null) return; figImg = false;
   const im = new Image(); im.onload = () => { figImg = im; render(); }; im.src = "spidey.png";
@@ -504,7 +569,10 @@ function bodySvg(st, cls) {
   if (!src) return `<svg class="body ${cls}" viewBox="0 0 182 450" role="img" aria-label="${label}"><g class="hit">${hits}</g></svg>`;
   const rank = RANKS.indexOf(RANKS.find(r => r[1] === rankOf(streak()).name));
   const phase = `animation-delay:-${((performance.now() / 1000) % 8.4).toFixed(2)}s`;   // keeps the breathing smooth across re-renders
-  const flash = Date.now() - flashAt < 1500 ? `<g class="flash" filter="url(#bm-glow)" style="animation-delay:-${((Date.now() - flashAt) / 1000).toFixed(2)}s">${flashM.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}"/>`).join("")).join("")}</g>` : "";
+  const since = Date.now() - flashAt, pts = flashM.length ? MUSCLES[flashM[0]].p[0].split(" ").map(q => q.split(",").map(Number)) : [];
+  const wx = pts.length ? Math.min(132, Math.max(50, pts.reduce((t, p) => t + p[0], 0) / pts.length)) : 91, wy = pts.length ? pts.reduce((t, p) => t + p[1], 0) / pts.length : 150;
+  const word = since < 1500 && flashWord ? `<text class="pow${flashWord.length > 6 ? " big" : ""}" x="${wx.toFixed(0)}" y="${wy.toFixed(0)}" text-anchor="middle" style="animation-delay:-${(since / 1000).toFixed(2)}s">${flashWord}</text>` : "";
+  const flash = since < 1500 ? `<g class="flash" filter="url(#bm-glow)" style="animation-delay:-${((Date.now() - flashAt) / 1000).toFixed(2)}s">${flashM.map(m => MUSCLES[m].p.map(p => `<polygon points="${p}"/>`).join("")).join("")}</g>` : "";
   return `<svg class="body live ${cls}" viewBox="0 0 182 450" role="img" aria-label="${label}">
       <defs>
         <radialGradient id="bm-aura"><stop offset="0" stop-color="#ff7a3a" stop-opacity=".6"/><stop offset=".72" stop-color="#ff7a3a" stop-opacity="0"/></radialGradient>
@@ -516,7 +584,7 @@ function bodySvg(st, cls) {
       <g class="fig breath" style="${phase}"><image href="${src}" width="182" height="450" mask="url(#bm-torso)"/></g>
       <g class="fig al" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-al)"/></g>
       <g class="fig ar" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-ar)"/></g>
-      ${flash}
+      ${flash}${word}
       <g class="hit">${hits}</g></svg>`;
 }
 function bodyMap() {
@@ -635,7 +703,7 @@ function moreView() {
 
 // ---------- events ----------
 document.addEventListener("click", e => {
-  const b = e.target.closest("button, [data-muscle], #suit"); if (!b) return;
+  const b = e.target.closest("button, [data-muscle], #suit, #restgo"); if (!b) return;
   const d = b.dataset;
   if (d.muscle) { muscleInfo(d.muscle); return; }
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
@@ -656,7 +724,7 @@ document.addEventListener("click", e => {
     logDay = k >= dayKey() ? null : k < addDays(dayKey(), -30) ? logDay : k; render(); return; }
   if (d.daily) { const k = curDay(); S.daily[k] = S.daily[k] || {}; S.daily[k][d.daily] = !S.daily[k][d.daily]; save(); render(); return; }
   if (d.close !== undefined) { closeSheet(); return; }
-  if (b.id === "suit") { b.hidden = true; return; }
+  if (b.id === "suit" || b.id === "restgo") { b.hidden = true; return; }
   if (d.closeModal !== undefined) { $("#modal").hidden = true; render(); return; }
   if (d.step) { const [f, n] = d.step.split(":"); cur[f] = Math.max(f === "reps" ? 1 : 0, Math.round((cur[f] + +n) * 10) / 10); if (cur.ex === "pushup" && f === "kg" && cur.kg > 0) cur.v = 2; drawSheet(); return; }
   if (d.var !== undefined) { cur.v = +d.var; if (cur.ex === "pushup" && cur.v < 2) cur.kg = 0; drawSheet(); return; }
@@ -718,6 +786,7 @@ render();
 let a11yQueued = false;
 function syncA11y() {
   a11yQueued = false;
+  startClips();
   document.querySelectorAll(".tabs button").forEach(b => b.classList.contains("on") ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   document.querySelectorAll(".seg button, .qvar button, .chips button, .check, .tick, .qseg button, .qtype button").forEach(b => b.setAttribute("aria-pressed", b.classList.contains("on")));
 }
