@@ -7,9 +7,10 @@ const EX = {
   pushup: { name: "Push-ups", one: "push-up", step: 2.5 },
   squat:  { name: "Squats",   one: "squat",   step: 2.5 },
   lunge:  { name: "Lunges",   one: "lunge",   step: 2.5, perLeg: true },
-  kneeraise: { name: "Knee raises", one: "knee raise", step: 2.5 },
+  kneeraise: { name: "Hanging knee raises", short: "Knee raises", one: "hanging knee raise", step: 2.5 },
+  legraise: { name: "Hanging leg raises", short: "Leg raises", one: "hanging leg raise", step: 2.5 },
 };
-const QUICK_KG = ["pullup", "kneeraise"];   // quick sets that can carry added weight
+const QUICK_KG = ["pullup", "kneeraise", "legraise"];   // quick sets that can carry added weight
 const PUSH_VAR = ["Floor", "Feet up", "Backpack"];   // push-up variations, easiest first
 const PULL_VAR = ["Standard", "L-sit"];              // pull-up types; each keeps its own max, records and progression
 const VARS = { pullup: PULL_VAR, pushup: PUSH_VAR };
@@ -23,9 +24,9 @@ function defaults() {
     v: 1,
     settings: {
       theme: "dark",
-      ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12], kneeraise: [10, 15] },
-      gtg: { pullup: 6, pushup: 10, kneeraise: 10 }, // usual grease-the-groove set
-      gtgKg: { pullup: 0, kneeraise: 0 },          // added kg on the quick set
+      ranges: { pullup: { bw: [10, 15], wt: [5, 8] }, pushup: [15, 25], squat: [10, 15], lunge: [10, 12], kneeraise: [10, 15], legraise: [8, 12] },
+      gtg: { pullup: 6, pushup: 10, kneeraise: 10, legraise: 6 }, // usual grease-the-groove set
+      gtgKg: { pullup: 0, kneeraise: 0, legraise: 0 },         // added kg on the quick set
       rest: { bw: 120, wt: 180 },
       quickEx: "pullup",                           // exercise picked in the quick-add bar                  // rest timer after a working set, seconds (0 = off)
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
@@ -691,7 +692,7 @@ function quickBar() {
   const warn = ex === "pullup" && !kg && gtgWarn(n, v), one = EX[ex].one + (n === 1 ? "" : "s");
   return `<div class="card qbar"><div class="qhead"><span>Quick groove set</span>
       ${ex === "pullup" ? `<span class="qtype">${PULL_VAR.map((t, i) => `<button data-gvar="${i}" class="${i === v ? "on" : ""}">${t}</button>`).join("")}</span>` : ""}</div>
-    <div class="qseg">${["pullup", "pushup", "kneeraise"].map(e => `<button data-qex="${e}" class="${e === ex ? "on" : ""}">${EX[e].name}</button>`).join("")}</div>
+    <div class="qseg">${["pullup", "pushup", "kneeraise", "legraise"].map(e => `<button data-qex="${e}" class="${e === ex ? "on" : ""}">${EX[e].short || EX[e].name}</button>`).join("")}</div>
     <div class="qrow"><div class="qst"><button data-gstep="${ex}:-1" aria-label="Fewer reps" ${n <= 1 ? "disabled" : ""}>−</button><b>${n}</b><button data-gstep="${ex}:1" aria-label="More reps">+</button><small>reps</small></div>
       ${QUICK_KG.includes(ex) ? `<div class="qst"><button data-gkg="${ex}:-1" aria-label="Less weight" ${kg <= 0 ? "disabled" : ""}>−</button><b>${kg ? "+" + fmtKg(kg) : 0}</b><button data-gkg="${ex}:1" aria-label="More weight">+</button><small>kg</small></div>` : ""}</div>
     <button class="qadd ${warn ? "warn" : ""}" data-quick="${ex}">Add ${n} ${v ? "L-sit " : ""}${one}${kg ? ` +${fmtKg(kg)} kg` : ""}</button>
@@ -749,7 +750,7 @@ const MUSCLES = {
 };
 const HEAD = "68,8 100,8 106,40 99,64 84,70 70,63 65,40";   // the mask always keeps its color
 const MUSCLE_OF = { pullup: ["lats", "arms", "forearms"], pushup: ["chest", "shoulders", "arms"], squat: ["quads"],
-  lunge: ["quads", "calves"], kneeraise: ["core", "forearms"] };
+  lunge: ["quads", "calves"], kneeraise: ["core", "forearms"], legraise: ["core", "forearms"] };
 const musclesOf = s => (MUSCLE_OF[s.ex] || []).concat(s.ex === "pullup" && s.v === 1 ? ["core"] : []);   // L-sit adds core
 const glow = d => d <= 1 ? 1 : d === 2 ? .8 : d === 3 ? .6 : d <= 6 ? .35 : 0;   // days since trained -> color strength
 // recovery: how fresh each muscle is (0-100%). Every session leaves fatigue by how much was done (a working set = 1,
@@ -957,7 +958,8 @@ function moreView() {
     <h3>Grease the groove</h3><div class="card">
       <div class="inrow"><label>Quick pull-up set</label><input type="number" inputmode="numeric" data-gtg="pullup" value="${st.gtg.pullup}"></div>
       <div class="inrow"><label>Quick push-up set</label><input type="number" inputmode="numeric" data-gtg="pushup" value="${st.gtg.pushup}"></div>
-      <div class="inrow"><label>Quick knee-raise set</label><input type="number" inputmode="numeric" data-gtg="kneeraise" value="${st.gtg.kneeraise}"></div>
+      <div class="inrow"><label>Quick hanging knee-raise set</label><input type="number" inputmode="numeric" data-gtg="kneeraise" value="${st.gtg.kneeraise}"></div>
+      <div class="inrow"><label>Quick hanging leg-raise set</label><input type="number" inputmode="numeric" data-gtg="legraise" value="${st.gtg.legraise}"></div>
       <p class="muted" style="font-size:14px">Keep groove pull-up sets at or under ${Math.floor(0.6 * maxBw("pullup"))} (60% of your max of ${maxBw("pullup")}).</p></div>
     <h3>Running</h3><div class="card">
       <div class="inrow"><label>Max heart rate (bpm)</label><input type="number" inputmode="numeric" data-maxhr placeholder="${maxHr()}" value="${st.maxHr || ""}"></div>
@@ -968,7 +970,7 @@ function moreView() {
       <p class="muted" style="font-size:14px">Starts when you log a set from an exercise card. 0 turns it off.</p></div>
     <h3>Rep ranges</h3><div class="card">
       ${rangeRow("Pull-ups, bodyweight", "pullup.bw", r.pullup.bw)}${rangeRow("Pull-ups, weighted", "pullup.wt", r.pullup.wt)}
-      ${rangeRow("Push-ups", "pushup", r.pushup)}${rangeRow("Squats", "squat", r.squat)}${rangeRow("Lunges (per leg)", "lunge", r.lunge)}${rangeRow("Knee raises", "kneeraise", r.kneeraise)}</div>
+      ${rangeRow("Push-ups", "pushup", r.pushup)}${rangeRow("Squats", "squat", r.squat)}${rangeRow("Lunges (per leg)", "lunge", r.lunge)}${rangeRow("Hanging knee raises", "kneeraise", r.kneeraise)}${rangeRow("Hanging leg raises", "legraise", r.legraise)}</div>
     <h3>Goals</h3><div class="card">${goalRows}
       <div class="inrow" style="flex-wrap:wrap"><select id="g-ex">${Object.keys(EX).map(k => `<option value="${k}">${EX[k].name}</option>`).join("")}</select>
         <input id="g-reps" type="number" inputmode="numeric" placeholder="reps"><input id="g-kg" type="number" inputmode="decimal" placeholder="+kg">
