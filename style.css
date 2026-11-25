@@ -249,14 +249,16 @@ svg.body.mini { width: 31%; max-width: 130px; height: auto; flex: none; }
 .qwarn { margin: -2px 0 0; font-size: 13px; color: var(--warn); }
 
 /* the living figure */
+svg.body.live { overflow: visible; }
 svg.body.live .fig { transform-box: view-box; }
-/* breathing grows the body up from the feet; the arms ride up with the shoulders (6.4px) and swing out */
-svg.body.live .breath { transform-origin: 91px 440px; animation: bm-breath 4.2s ease-in-out infinite alternate; }
+/* breathing: legs stay planted; the body above the waistband (y 198) puffs out and rises, and the arms ride
+   with the shoulders (pivots move 2.35px out and 4.6px up) while swinging out */
+svg.body.live .breath { transform-origin: 91px 198px; animation: bm-breath 4.2s ease-in-out infinite alternate; }
 svg.body.live .al { transform-origin: 44px 84px; animation: bm-arm-l 4.2s ease-in-out infinite alternate; }
 svg.body.live .ar { transform-origin: 138px 84px; animation: bm-arm-r 4.2s ease-in-out infinite alternate; }
-@keyframes bm-breath { to { transform: scale(1.014, 1.018); } }
-@keyframes bm-arm-l { to { transform: translate(-.7px, -6.4px) rotate(2.6deg); } }
-@keyframes bm-arm-r { to { transform: translate(.7px, -6.4px) rotate(-2.6deg); } }
+@keyframes bm-breath { to { transform: scale(1.05, 1.04); } }
+@keyframes bm-arm-l { to { transform: translate(-2.35px, -4.6px) rotate(4.5deg); } }
+@keyframes bm-arm-r { to { transform: translate(2.35px, -4.6px) rotate(-4.5deg); } }
 svg.body .aura { transform-box: fill-box; transform-origin: center; animation: bm-aura 4.2s ease-in-out infinite alternate; }
 @keyframes bm-aura { from { transform: scale(.94); } to { transform: scale(1.05); } }
 svg.body .flash polygon { fill: #ffc070; }

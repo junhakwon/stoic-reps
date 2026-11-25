@@ -576,12 +576,18 @@ function bodySvg(st, cls) {
   return `<svg class="body live ${cls}" viewBox="0 0 182 450" role="img" aria-label="${label}">
       <defs>
         <radialGradient id="bm-aura"><stop offset="0" stop-color="#ff7a3a" stop-opacity=".6"/><stop offset=".72" stop-color="#ff7a3a" stop-opacity="0"/></radialGradient>
-        <mask id="bm-torso" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><rect width="182" height="450" fill="#fff"/><polygon points="${ARM_L}" fill="#000" stroke="#fff" stroke-width="2.5"/><polygon points="${ARM_R}" fill="#000" stroke="#fff" stroke-width="2.5"/></mask>
+        <mask id="bm-upper" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><rect width="182" height="199" fill="#fff"/><polygon points="${ARM_L}" fill="#000" stroke="#fff" stroke-width="2.5"/><polygon points="${ARM_R}" fill="#000" stroke="#fff" stroke-width="2.5"/></mask>
+        <mask id="bm-legs" maskUnits="userSpaceOnUse" x="0" y="0" width="182" height="450"><rect y="197" width="182" height="253" fill="#fff"/><polygon points="${ARM_L}" fill="#000" stroke="#fff" stroke-width="2.5"/><polygon points="${ARM_R}" fill="#000" stroke="#fff" stroke-width="2.5"/></mask>
+        <filter id="bm-pitblur" x="-30%" y="-10%" width="160%" height="120%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="3.5"/>
+          <feComponentTransfer><feFuncR type="linear" slope=".7"/><feFuncG type="linear" slope=".7"/><feFuncB type="linear" slope=".7"/></feComponentTransfer></filter>
+        <clipPath id="bm-pit"><polygon points="40,98 54,98 54,190 38,190"/><polygon points="128,98 142,98 144,190 128,190"/></clipPath>
         <clipPath id="bm-al"><polygon points="${ARM_L}"/></clipPath><clipPath id="bm-ar"><polygon points="${ARM_R}"/></clipPath>
         <filter id="bm-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter>
       </defs>
       ${rank > 0 ? `<ellipse class="aura" cx="91" cy="215" rx="${62 + rank * 5}" ry="${150 + rank * 10}" fill="url(#bm-aura)" opacity="${(.22 + rank * .08).toFixed(2)}" style="${phase}"/>` : ""}
-      <g class="fig breath" style="${phase}"><image href="${src}" width="182" height="450" mask="url(#bm-torso)"/></g>
+      <g filter="url(#bm-pitblur)"><image href="${src}" width="182" height="450" clip-path="url(#bm-pit)"/></g>
+      <image href="${src}" width="182" height="450" mask="url(#bm-legs)"/>
+      <g class="fig breath" style="${phase}"><image href="${src}" width="182" height="450" mask="url(#bm-upper)"/></g>
       <g class="fig al" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-al)"/></g>
       <g class="fig ar" style="${phase}"><image href="${src}" width="182" height="450" clip-path="url(#bm-ar)"/></g>
       ${flash}${word}
