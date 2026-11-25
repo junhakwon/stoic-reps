@@ -523,29 +523,100 @@ function render() {
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
 }
 
+// Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
 function homeView() {
   const d = curDay(), daily = S.daily[d] || {}, st = muscleState();
-  const rows = Object.keys(EX).map(k => {
-    const sg = suggest(k), g = st[MUSCLE_OF[k][0]].g;   // the main muscle it trains
-    return `<button class="exrow" data-ex="${k}"><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
-      <span class="t"><b>${EX[k].name}</b><span class="nx ${sg.kind === "down" ? "down" : ""}">${esc(sg.text.replace(/^Next: /, "Next "))}</span>
-        ${recNote(k, st)}</span>
-      <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
-  }).join("");
   return `<div class="hdr"><h1>Stoic Reps</h1>
       <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
-    <div class="card hero">${bodySvg(st, "mini")}
-      <div class="side">${streakCard()}
-        <button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
-        <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button>
-        <p class="hint">${nextHint(st)}</p></div></div>
-    ${restDayCard()}
+    ${readyCard(st)}
+    ${pathCard()}
+    <div class="ticks"><button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
+      <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button></div>
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
+    ${restDayCard()}
+    <p class="hint thint">${nextHint(st)}</p>
+    <div class="tiles">${Object.keys(EX).map(k => tile(k, st)).join("")}${runTile(st)}</div>
     ${S.runs.filter(r => dayKey(r.t) === d).map(runCard).join("")}
-    <div class="card list">${rows}${runRow(st)}</div>
     ${quickBar()}`;
+}
+const recColor = v => v >= 70 ? "var(--good)" : v >= 40 ? "var(--accent)" : "var(--warn)";
+// readiness: the average recovery of all muscles, a ring, a line, and upper / core / legs bars
+function readyCard(st) {
+  const avg = a => Math.round(a.reduce((t, m) => t + st[m].rec, 0) / a.length), all = avg(Object.keys(MUSCLES));
+  const G = [["upper body", ["shoulders", "chest", "lats", "arms", "forearms"]], ["core", ["core"]], ["legs", ["quads", "calves"]]].map(([n, a]) => [n, avg(a)]);
+  const fresh = G.filter(g => g[1] >= 80).map(g => g[0]), tired = G.filter(g => g[1] < 50).map(g => g[0]);
+  const plural = a => a.length > 1 || a[0] === "legs", join = a => a.length > 1 ? a.slice(0, -1).join(", ") + " and " + a[a.length - 1] : a[0];
+  const msg = !tired.length ? (fresh.length === 3 ? "Fresh all over. Ready for anything." : "Good to train.")
+    : tired.length === 3 ? "Rest is training too, today."
+    : `${fresh.length ? `${cap(join(fresh))} ${plural(fresh) ? "are" : "is"} fresh.<br>` : ""}<span class="tired">${cap(join(tired))} need${plural(tired) ? "" : "s"} a day.</span>`;
+  const dash = (314 * all / 100).toFixed(1);
+  return `<div class="card ready">${bodySvg(st, "mini")}
+    <div class="rside"><div class="gauge" role="img" aria-label="${all}% ready"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" class="gt"/>
+        <circle cx="60" cy="60" r="50" class="gv" style="stroke:${all < 50 ? "var(--warn)" : "var(--accent)"}" stroke-dasharray="${dash} 314" transform="rotate(-90 60 60)"/></svg>
+        <div><b>${all}%</b><span>READY</span></div></div>
+      <p class="rmsg">${msg}</p>
+      <div class="rbars">${G.map(([n, v]) => `<div><span>${n === "upper body" ? "Upper" : cap(n)}</span><i><i style="width:${v}%;background:${recColor(v)}"></i></i><b style="${v < 40 ? "color:var(--warn)" : ""}">${v}</b></div>`).join("")}</div></div></div>`;
+}
+// the path: the last 7 days (height = how much you did) and the next 3 if you keep going
+function pathCard() {
+  const info = streakInfo(), n = info.n, r = rankOf(n), today = dayKey(), st = info.status;
+  const lift = new Set(S.sets.map(s => dayKey(s.t))), ran = new Set(S.runs.map(x => dayKey(x.t)));
+  const past = [6, 5, 4, 3, 2, 1, 0].map(i => addDays(today, -i));
+  const load = k => S.sets.reduce((t, s) => t + (dayKey(s.t) === k ? (s.gtg ? .4 : 1) : 0), 0) + S.runs.reduce((t, x) => t + (dayKey(x.t) === k ? (effortOf(x) || x.dur / 30) / 20 : 0), 0);
+  const L = past.map(load), mx = Math.max(1, ...L), doneToday = st[today] === "on";
+  let nn = n + (doneToday ? 0 : 1), restShown = false;
+  const fut = [1, 2, 3].map(i => {
+    const k = addDays(today, i); nn++;
+    const rk = n ? RANKS.find(x => x[0] === nn && x[0] > 0) : null, rest = !rk && !restShown && !!n && (!info.lastRest || addDays(info.lastRest, 7) <= k);
+    if (rest) restShown = true;
+    return { k, rk, rest };
+  });
+  const x = i => (14 + i * 312 / 9).toFixed(1), y = i => (L[i] ? 34 - 26 * L[i] / mx : 38).toFixed(1), FY = 18;
+  const held = s => s === "on" || s === "rday";
+  let lines = "";
+  for (let i = 1; i < 7; i++) { const a = st[past[i - 1]], b = st[past[i]] || (past[i] === today ? "now" : "off");
+    if (held(a) && (held(b) || b === "now")) lines += `<path class="pl${a === "rday" || b === "rday" ? " rd" : ""}" d="M${x(i - 1)} ${y(i - 1)} L${x(i)} ${y(i)}"/>`; }
+  if (n) lines += `<path class="pl fut" d="M${x(6)} ${y(6)} ${fut.map((f, i) => `L${x(7 + i)} ${FY}`).join(" ")}"/>`;
+  const dots = past.map((k, i) => {
+    const s = st[k] || (k === today ? "now" : "off"), Lf = lift.has(k), R = ran.has(k);
+    const cls = Lf && R ? "both" : Lf ? "lift" : R ? "run" : s === "rday" ? "rday" : s === "now" ? "now" : "off";
+    return `<circle class="pd ${cls}" cx="${x(i)}" cy="${y(i)}" r="${k === today ? 6.5 : 4.5}"/>`;
+  }).join("") + (n ? fut.map((f, i) => `<circle class="pd fut${f.rest ? " frest" : ""}${f.rk ? " frank" : ""}" cx="${x(7 + i)}" cy="${FY}" r="4.5"/>`).join("") : "");
+  const labels = past.map(k => `<span class="${k === today ? "now" : ""}">${WD[keyToDate(k).getDay()][0]}</span>`).join("")
+    + fut.map(f => `<span class="${f.rk ? "rk" : ""}">${WD[keyToDate(f.k).getDay()][0]}${f.rest ? "·rest" : ""}</span>`).join("");
+  let next = "";
+  if (r.next && n) { const when = r.next[0] - n - (doneToday ? 0 : 1); next = `${r.next[1]} ${when <= 0 ? "today" : when === 1 ? "tomorrow" : `in ${when} days`}`; }
+  const line = !n ? "Log a set or a run to start a streak."
+    : doneToday ? (r.next ? "Done for today. Keep the thread." : "The highest rank. Keep going.")
+    : info.restOk ? "Rest day available. Your streak is safe today."
+    : `<span class="risk">Train today to make it ${n + 1}.</span>`;
+  return `<div class="card path"><div class="phead"><span><b>${n}</b>-day streak · <em>${r.name}</em>${info.best > n ? ` <small>best ${info.best}</small>` : ""}</span><span class="pnext">${next}</span></div>
+    <svg viewBox="0 0 340 46" aria-hidden="true">${lines}${dots}</svg>
+    <div class="plabels">${labels}</div><p class="sline">${line}</p></div>`;
+}
+// an exercise tile: the plan, and a bar for its least-recovered muscle
+function tile(k, st) {
+  const sg = suggest(k), m = MUSCLE_OF[k].reduce((a, b) => st[b].rec < st[a].rec ? b : a), rec = st[m].rec, first = k === Object.keys(EX)[0];
+  return `<button class="tile${rec < 40 ? " low" : ""}" data-ex="${k}"><span class="th"><b>${EX[k].name}</b><span class="tp${first ? " on" : ""}" aria-hidden="true">+</span></span>
+    <span class="tn${sg.kind === "down" ? " down" : ""}">${esc(sg.text.replace(/^(Next|Start): /, ""))}</span>
+    ${rec < 60 ? `<span class="tr">${MUSCLES[m].name.split(" ")[0]} ${rec}% recovered</span>` : ""}
+    <i class="tb" aria-hidden="true"><i style="width:${rec}%;background:${recColor(rec)}"></i></i></button>`;
+}
+function runTile(st) {
+  const rs = S.runs.filter(r => dayKey(r.t) === curDay()), last = S.runs[S.runs.length - 1];
+  if (rs.length) {
+    const r = rs[rs.length - 1], e = effortOf(r);
+    return `<button class="tile run done" data-run-add><span class="th"><b>Run</b><span class="tdone">DONE</span></span>
+      <span class="tn2">${r.dist ? fmtKm(r.dist) + " km · " : ""}${fmtDur(r.dur)}</span>${e ? `<span class="te">Effort <b>${e}</b> · ${effortWord(e)}</span>` : ""}</button>`;
+  }
+  const rec = Math.min(st.quads.rec, st.calves.rec);
+  const ago = last ? agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5)) : "";
+  return `<button class="tile run" data-run-add><span class="th"><b>Run</b><span class="tp" aria-hidden="true">+</span></span>
+    <span class="tn2">${last ? `Last: ${last.dist ? fmtKm(last.dist) + " km" : fmtDur(last.dur)} · ${ago}` : "From Garmin or by hand"}</span>
+    ${rec < 60 ? `<span class="tr">Legs ${rec}% recovered</span>` : ""}
+    <i class="tb" aria-hidden="true"><i style="width:${rec}%;background:${recColor(rec)}"></i></i></button>`;
 }
 
 // under an exercise: its least-recovered muscle, when under 60%
