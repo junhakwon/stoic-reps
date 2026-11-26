@@ -103,5 +103,16 @@ const QUOTES = [
   { k: "spirit", a: "Friedrich Nietzsche", s: "Twilight of the Idols, Maxims and Arrows 8", th: "adversity", q: "Out of life’s school of war: What does not destroy me, makes me stronger." },
   { k: "spirit", a: "Michael Jordan", s: "Nike “Failure” ad (1997)", th: "better", q: "I’ve missed more than 9000 shots in my career. I’ve lost almost 300 games. 26 times, I’ve been trusted to take the game winning shot and missed. I’ve failed over and over and over again in my life. And that is why I succeed." },
   { k: "spirit", a: "Wayne Gretzky", s: "to The Hockey News (1983)", th: "effort", q: "You miss 100% of the shots you don’t take." },
+  // ---- more from the Dark Knight trilogy ----
+  { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "discipline", q: "Death does not wait for you to be ready!" },
+  { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "self-mastery", q: "To conquer fear, you must become fear." },
+  { k: "spirit", a: "Alfred and Bruce Wayne", s: "The Dark Knight (2008)", th: "self-mastery", q: "“Know your limits, Master Wayne.” “Batman has no limits.” “Well, you do, sir.”" },
+  { k: "spirit", a: "Harvey Dent", s: "The Dark Knight (2008)", th: "character", q: "You either die a hero, or you live long enough to see yourself become the villain." },
+  { k: "spirit", a: "Jim Gordon", s: "The Dark Knight (2008)", th: "character", q: "He’s a silent guardian, a watchful protector. A dark knight." },
+  { k: "spirit", a: "Bane", s: "The Dark Knight Rises (2012)", th: "discipline", q: "Peace has cost you your strength. Victory has defeated you." },
+  { k: "spirit", a: "Bane", s: "The Dark Knight Rises (2012)", th: "adversity", q: "You merely adopted the dark. I was born in it, molded by it." },
+  { k: "spirit", a: "The blind prisoner", s: "The Dark Knight Rises (2012)", th: "effort", q: "You do not fear death. You think this makes you strong. It makes you weak." },
+  { k: "spirit", a: "The blind prisoner", s: "The Dark Knight Rises (2012)", th: "effort", q: "Then make the climb." },
+  { k: "spirit", a: "Batman", s: "The Dark Knight Rises (2012)", th: "character", q: "The idea was to be a symbol. Batman could be anybody. That was the point." },
 ];
 QUOTES.forEach((x, i) => { x.id = i; });
