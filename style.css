@@ -582,3 +582,67 @@ h3.sec { margin: 20px 2px 8px; }
 .bkup span { font-size: 12px; color: var(--muted); }
 .bkup .small-btn { min-height: 44px; }
 .bkup .link { min-height: 44px; padding: 0 6px; }
+
+/* ===== UX rounds (v38) ===== */
+/* 2: a compact readiness card, so today's WOD and the readiness both fit the first screen */
+html[data-look] .ready { padding: 10px 12px 12px 6px; gap: 4px; }
+html[data-look] .ready svg.body.mini { width: 30%; max-width: 118px; }
+html[data-look] .ready .gauge { width: 84px; height: 84px; }
+html[data-look] .ready .gauge b { font-size: 28px; }
+html[data-look] .ready .gauge span { font-size: 9px; }
+html[data-look] .ready .rside { gap: 8px; }
+html[data-look] .ready .rmsg { font-size: 12px; }
+/* 3: the daily ticks inside readiness */
+.rticks { display: flex; gap: 6px; }
+.rticks .tick.mini { flex: 1; min-height: 40px; padding: 0 8px; font-size: 12px; gap: 6px; }
+.rticks .tick.mini .box { width: 16px; height: 16px; font-size: 11px; }
+/* 4: the WOD chooser */
+.wfil { flex-wrap: wrap; margin: 10px 0 4px; }
+.wplist { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.wpick { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px 12px; border-radius: 14px; background: var(--card2); text-align: left; }
+.wpick.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.wpn { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wpn b { font-size: 15px; }
+.wpn small { font-size: 12px; color: var(--muted); }
+.wfresh, .wtired { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.wfresh { color: var(--good); } .wtired { color: var(--warn); }
+/* 5: scale */
+.wscale { margin: 0 0 10px; }
+.wscale button { min-height: 40px; font-size: 13px; }
+.wsc { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+/* 7: the move checklist and what's next */
+.wround { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 0 0 10px; }
+.wround b { font-size: 17px; }
+.wround span { font-size: 14px; color: var(--muted); }
+.wchk { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.wmv { display: grid; grid-template-columns: 30px 64px 1fr; align-items: center; gap: 8px; width: 100%; min-height: 56px; padding: 6px 10px; border-radius: 14px; background: var(--card2); text-align: left; }
+.wmv i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--muted); display: grid; place-items: center; font-style: normal; font-size: 14px; }
+.wmv b { font-size: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.wmv span { font-size: 15px; font-weight: 600; }
+.wmv.nx { box-shadow: inset 0 0 0 2px var(--accent); }
+.wmv.on { opacity: .55; }
+.wmv.on i { background: var(--good); border-color: var(--good); color: #10240f; }
+.wtip { font-size: 12px; text-align: center; margin: 0 0 10px; }
+/* 8: pause */
+.wctl { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+.wctl .big { margin-top: 0; }
+.wrun.paused .wclock { opacity: .45; }
+/* 9: the finish screen */
+.wsum .wsk { margin: 8px 0 0; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.wsum h2 { margin: 2px 0 6px; }
+.wsum .wscore { font-size: 44px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.wsum .wvs { margin: 4px 0 12px; color: var(--muted); }
+.wsum .wst { grid-template-columns: repeat(2, minmax(0, 1fr)); text-align: left; margin-bottom: 10px; }
+/* 11: empty states */
+.card.empty { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.card.empty p { margin: 0; color: var(--muted); font-size: 14px; }
+.card.empty .small-btn { min-height: 44px; }
+/* 12: the slim backup reminder */
+.bkup { flex-wrap: nowrap; }
+.bkup > div { flex: 1 1 auto; }
+.bkup .xbtn { flex: none; width: 36px; min-height: 44px; }
+/* 14: text only screen readers hear */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+/* 15: WOD bests trend */
+.wtr { font-weight: 800; margin-left: 4px; } .wtr.up { color: var(--good); } .wtr.dn { color: var(--warn); }
+.bkup .small-btn { white-space: nowrap; padding: 0 14px; }

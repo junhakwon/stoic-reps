@@ -582,20 +582,21 @@ function homeView() {
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
     ${backupBanner()}
-    ${readyCard(st)}
     ${wodCard()}
-    ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
+    ${readyCard(st)}
     ${pathCard()}
-    <div class="ticks"><button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
-      <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button></div>
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
     ${restDayCard()}
+    ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
     <h3 class="sec">All exercises</h3>
     <div class="tiles">${Object.keys(EX).map(k => tile(k, st)).join("")}${runTile(st)}</div>
     ${S.runs.filter(r => dayKey(r.t) === d).map(runCard).join("")}
     ${quickBar()}`;
 }
 const recColor = v => v >= 70 ? "var(--good)" : v >= 40 ? "var(--rec-mid, var(--accent))" : "var(--rec-low, var(--warn))";   // a look can recolour mid and low
+// creatine and protein: one tap each, inside the readiness card
+const tickRow = () => { const dl = S.daily[curDay()] || {};
+  return `<div class="rticks">${[["creatine", "Creatine"], ["protein", "Protein"]].map(([k, l]) => `<button class="tick mini ${dl[k] ? "on" : ""}" data-daily="${k}" aria-pressed="${!!dl[k]}"><span class="box">${dl[k] ? "✓" : ""}</span>${l}</button>`).join("")}</div>`; };
 // readiness: the average recovery of all muscles, a ring, a line, and upper / core / legs bars
 function readyCard(st) {
   const avg = a => Math.round(a.reduce((t, m) => t + st[m].rec, 0) / a.length), all = avg(Object.keys(MUSCLES));
@@ -611,7 +612,7 @@ function readyCard(st) {
         <circle cx="60" cy="60" r="50" class="gv" style="stroke:${all < 50 ? "var(--warn)" : "var(--accent)"}" stroke-dasharray="${dash} 314" transform="rotate(-90 60 60)"/></svg>
         <div><b>${all}%</b><span>READY</span></div></div>
       <p class="rmsg">${msg}</p>
-      <div class="rbars">${G.map(([n, v]) => `<div><span>${n === "upper body" ? "Upper" : cap(n)}</span><i><i style="width:${v}%;background:${recColor(v)}"></i></i><b style="${v < 40 ? "color:var(--warn)" : ""}">${v}</b></div>`).join("")}</div></div></div>`;
+      <div class="rbars">${G.map(([n, v]) => `<div><span>${n === "upper body" ? "Upper" : cap(n)}</span><i><i style="width:${v}%;background:${recColor(v)}"></i></i><b style="${v < 40 ? "color:var(--warn)" : ""}">${v}</b></div>`).join("")}</div>${tickRow()}</div></div>`;
 }
 // ---------- today's workout: picked from your past sessions ----------
 // one exercise per area (pull, push, legs, core). Each is scored by how overdue it is against your own rhythm
@@ -731,9 +732,9 @@ function wodChoice() { const d = wodDay(), p = wodPicks(); return d.wodId && WOD
 const wodScore = (w, res) => !res ? "" : res.secs != null ? fmtDur(res.secs) : w.fmt === "amrap" ? `${res.rounds} round${res.rounds === 1 ? "" : "s"}${res.reps ? ` + ${res.reps}` : ""}`
   : w.fmt === "climb" ? `${res.minutes} minute${res.minutes === 1 ? "" : "s"}` : res.rounds != null && w.fmt === "rounds" ? `${res.rounds} of ${w.rounds} rounds` : "done";
 const wodRank = (w, res) => !res ? -Infinity : res.secs != null ? -res.secs : w.fmt === "amrap" ? (res.rounds || 0) * 1000 + (res.reps || 0) : w.fmt === "climb" ? res.minutes || 0 : null;
-function wodBest(id) {
+function wodBest(id, sc = "rx") {   // bests are kept per scale (easier / as written / harder)
   const w = WOD_BY[id]; let b = null;
-  for (const x of S.wods) if (x.id === id && wodRank(w, x.res) != null && (!b || wodRank(w, x.res) > wodRank(w, b.res))) b = x;
+  for (const x of S.wods) if (x.id === id && (x.scale || "rx") === sc && wodRank(w, x.res) != null && (!b || wodRank(w, x.res) > wodRank(w, b.res))) b = x;
   return b;
 }
 function wodMoves(w) {
@@ -743,37 +744,86 @@ function wodMoves(w) {
   const tag = w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : w.fmt === "tabata" ? "20 s" : "";
   return `<ol class="wmoves">${w.moves.map(m => tag ? `<li><b>${tag}</b><span>${moveName(m)}${swapNote(m)}</span></li>` : li(m)).join("")}</ol>`;
 }
-let wodCancelArm = false;
+// Scaling, like Rx / Scaled on a gym whiteboard: easier = about 70% of the reps, half the running, knee raises instead of
+// leg raises; harder = leg raises instead of knee raises and feet-up push-ups. Bests are kept per scale.
+const SCALES = [["easy", "Easier"], ["rx", "As written"], ["hard", "Harder"]];
+const scaleTag = sc => sc && sc !== "rx" ? ` <small class="wsc">${sc === "easy" ? "easier" : "harder"}</small>` : "";
+function wodOf(id, sc = "rx") {
+  const w = WOD_BY[id]; if (!w || !sc || sc === "rx") return w;
+  const mv = m => {
+    const o = m.slice();
+    if (sc === "easy") {
+      if (o[0] === "run" && o[1]) o[1] = Math.max(50, Math.round(o[1] * .5 / 50) * 50);
+      else if (o[1]) o[1] = Math.max(1, Math.round(o[1] * .7));
+      if (o[0] === "legraise") o[0] = "kneeraise";
+    } else { if (o[0] === "kneeraise") o[0] = "legraise"; if (o[0] === "pushup" && !o[3]) o[3] = 1; }
+    return o;
+  };
+  const c = Object.assign({}, w, { scale: sc });
+  for (const k of ["moves", "odd", "even"]) if (w[k]) c[k] = w[k].map(mv);
+  if (w.top) c.top = sc === "easy" ? 7 : 12;
+  if (w.scheme) c.scheme = sc === "easy" ? w.scheme.map(n => Math.round(n * .7)) : w.scheme;
+  if (w.start) c.start = sc === "easy" ? 3 : w.start + 1;
+  if (w.min && sc === "easy" && w.min > 12) c.min = Math.round(w.min * .75);
+  return c;
+}
+// the move checklist: how many of a move this round asks for, and how many rounds there are
+const CHECKLIST = ["rft", "amrap", "rounds", "ladder", "scheme"];
+const qtyAt = (w, i, m) => w.fmt === "ladder" ? i + 1 : w.fmt === "scheme" ? w.scheme[Math.min(i, w.scheme.length - 1)] : m[1];
+const totalRounds = w => w.fmt === "ladder" ? w.top : w.fmt === "scheme" ? w.scheme.length : w.fmt === "amrap" ? Infinity : w.rounds;
+const wodNeeds = w => { const ex = (w.moves || []).concat(w.odd || [], w.even || []).map(m => m[0]); return { run: ex.includes("run"), bar: ex.some(x => ["pullup", "kneeraise", "legraise", "hang"].includes(x)) }; };
+let wodCancelArm = false, wodFilter = "all";
+function wodRunCard(run) {
+  const w = wodOf(run.id, run.scale), list = CHECKLIST.includes(w.fmt), i = run.rounds || 0, done = run.done || [], tot = totalRounds(w);
+  const next = list ? w.moves.findIndex((m, k) => !done.includes(k)) : -1, nm = next >= 0 ? w.moves[next] : null;
+  const roundTxt = w.fmt === "amrap" ? `Round ${i + 1}` : w.fmt === "ladder" ? `Rung ${i + 1} of ${tot}` : w.fmt === "scheme" ? `Set ${i + 1} of ${tot}` : `Round ${Math.min(i + 1, tot)} of ${tot}`;
+  const rows = list ? `<div class="wchk">${w.moves.map((m, k) => { const on = done.includes(k);
+      return `<button class="wmv${on ? " on" : ""}${k === next ? " nx" : ""}" data-act="wod-move" data-i="${k}" aria-pressed="${on}"><i aria-hidden="true">${on ? "✓" : ""}</i><b>${moveQty(m, qtyAt(w, i, m))}</b><span>${moveName(m)}${swapNote(m)}</span></button>`; }).join("")}</div>` : wodMoves(w);
+  return `<div class="card wod wrun${run.paused ? " paused" : ""}"><div class="plhead"><b>${esc(w.name)}${scaleTag(run.scale)}</b><span class="muted">${fmtShort(w)}</span></div>
+    <div class="wclock" id="wclock">0:00</div><p class="wnow" id="wnow"></p><p class="sr" id="wlive" aria-live="polite"></p>
+    ${list ? `<div class="wround"><b>${roundTxt}</b>${nm ? `<span>Next: ${moveQty(nm, qtyAt(w, i, nm))} ${esc(moveName(nm).toLowerCase())}</span>` : ""}</div>` : ""}
+    ${rows}${list ? `<p class="muted wtip">Tap each move as you finish it; the round counts itself.</p>` : ""}
+    <div class="wctl"><button class="big" data-act="wod-pause">${run.paused ? "Resume" : "Pause"}</button><button class="big primary" data-act="wod-finish">Finish</button></div>
+    <button class="link wcancel" data-act="wod-cancel">${wodCancelArm ? "Tap again to cancel the workout" : "Cancel workout"}</button></div>`;
+}
 function wodCard() {
   if (logDay) return "";
   const d = wodDay(), run = d.wodRun, doneToday = S.wods.filter(x => dayKey(x.t) === dayKey());
-  if (run && WOD_BY[run.id]) {
-    const w = WOD_BY[run.id], counts = ["rft", "amrap", "rounds"].includes(w.fmt) && !(w.fmt === "rft" && w.rounds === 1);
-    return `<div class="card wod wrun"><div class="plhead"><b>${esc(w.name)}</b><span class="muted">${fmtShort(w)}</span></div>
-      <div class="wclock" id="wclock" aria-live="off">0:00</div><p class="wnow" id="wnow"></p>
-      ${counts ? `<button class="wcount" data-act="wod-round"><b id="wrounds">${run.rounds || 0}</b><span>rounds done · tap +1</span></button>` : ""}
-      ${wodMoves(w)}
-      <button class="big primary" data-act="wod-finish">Finish</button>
-      <button class="link wcancel" data-act="wod-cancel">${wodCancelArm ? "Tap again to cancel the workout" : "Cancel"}</button></div>`;
-  }
-  const rows = doneToday.map(x => { const w = WOD_BY[x.id]; return w ? `<div class="rdone"><span class="plck" aria-hidden="true">✓</span><b>${esc(w.name)}</b><span>${wodScore(w, x.res)}</span></div>` : ""; }).join("");
+  if (run && WOD_BY[run.id]) return wodRunCard(run);
+  const rows = doneToday.map(x => { const w = WOD_BY[x.id]; return w ? `<div class="rdone"><span class="plck" aria-hidden="true">✓</span><b>${esc(w.name)}${scaleTag(x.scale)}</b><span>${wodScore(w, x.res)}</span></div>` : ""; }).join("");
   if (doneToday.length && !d.wodMore) return `<div class="card plan wod"><div class="plhead"><b>Today's WOD</b><span class="muted">done</span>${widgetBtn()}</div>${rows}
       <button class="big wmore" data-act="wod-more">Another WOD</button></div>`;
-  const w = wodChoice(); if (!w) return "";
-  const rec = recovery(), rd = readiness(rec), best = wodBest(w.id), L = wodLoad(wodVolume(w));
+  const base = wodChoice(); if (!base) return "";
+  const sc = d.wodScale || "rx", w = wodOf(base.id, sc);
+  const rec = recovery(), rd = readiness(rec), best = wodBest(w.id, sc), L = wodLoad(wodVolume(w));
   const tired = Object.keys(L).filter(m => L[m] >= 1 && rec[m] < 50).map(m => MUSCLES[m].name.split(" ")[0].toLowerCase());
-  const lastDone = S.wods.filter(x => x.id === w.id).pop();
+  const lastDone = S.wods.filter(x => x.id === w.id).pop(), nd = wodNeeds(w);
   const why = [lastDone ? `Last done ${agoText(daysSince(dayKey(lastDone.t)))}` : "New for you", best ? `best ${wodScore(w, best.res)}` : ""].filter(Boolean).join(" · ");
   return `${rows ? `<div class="card plan rdlist"><div class="plhead"><b>Done today</b></div>${rows}</div>` : ""}
-    <div class="card wod"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">${fmtShort(w)} · ~${wodMinutes(w)} min</span>${doneToday.length ? "" : widgetBtn()}</div>
+    <div class="card wod"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">${fmtShort(w)} · ~${wodMinutes(w)} min${nd.bar ? " · bar" : ""}</span>${doneToday.length ? "" : widgetBtn()}</div>
     <h2 class="wname">${esc(w.name)}</h2><p class="wfmt">${wodFmt(w)}</p>
+    <div class="seg wscale" role="group" aria-label="How hard">${SCALES.map(([k, l]) => `<button data-wscale="${k}" class="${k === sc ? "on" : ""}" aria-pressed="${k === sc}">${l}</button>`).join("")}</div>
     ${wodMoves(w)}${w.note ? `<p class="muted wnote">${esc(w.note)}</p>` : ""}
-    <p class="muted wwhy">${why}${tired.length ? ` · <span class="tired">${cap(tired.join(" and "))} still tired: go easy</span>` : ""}</p>
+    <p class="muted wwhy">${why}${tired.length ? ` · <span class="tired">${cap(tired.join(" and "))} still tired: try Easier</span>` : ""}</p>
     ${rd < 45 && !doneToday.length ? `<p class="wwarn">You're ${rd}% recovered. An easy walk would also be a good day's work.</p>` : ""}
     <button class="big primary" data-act="wod-start">Start</button>
-    <div class="wbtns"><button class="small-btn" data-act="wod-another">Show another</button><button class="small-btn" data-act="wod-log">Log without timer</button></div></div>`;
+    <div class="wbtns"><button class="small-btn" data-act="wod-pick">Choose another</button><button class="small-btn" data-act="wod-log">Log without timer</button></div></div>`;
 }
-// ---- the timer: count up (for time), count down (AMRAP), or intervals (EMOM, Tabata, climb), with beeps ----
+// the chooser: every workout, the ones that suit today first, with filters
+function wodPicker() {
+  const p = wodPicks(), rec = recovery(keyToDate(dayKey()).getTime()), cur = wodChoice(), sc = wodDay().wodScale || "rx";
+  const F = { all: () => true, short: w => wodMinutes(w) <= 10, norun: w => !wodNeeds(w).run, nobar: w => !wodNeeds(w).bar };
+  const fit = w => { const L = wodLoad(wodVolume(w)), t = Object.keys(L).filter(m => L[m] >= 1 && rec[m] < 50);
+    return t.length ? `<span class="wtired">${MUSCLES[t[0]].name.split(" ")[0]} tired</span>` : `<span class="wfresh">Good today</span>`; };
+  const rows = p.filter(F[wodFilter]).map(w => { const n = wodNeeds(w), b = wodBest(w.id, sc);
+    return `<button class="wpick${w.id === cur.id ? " on" : ""}" data-wpick="${w.id}"><span class="wpn"><b>${esc(w.name)}</b><small>${fmtShort(w)} · ~${wodMinutes(w)} min${n.run ? " · run" : ""}${n.bar ? " · bar" : ""}${b ? ` · best ${wodScore(w, b.res)}` : ""}</small></span>${fit(w)}</button>`; }).join("")
+    || `<p class="muted">Nothing matches. Try another filter.</p>`;
+  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Choose a WOD</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
+    <div class="chips wfil">${[["all", "All"], ["short", "10 min or less"], ["norun", "No running"], ["nobar", "No bar"]].map(([k, l]) => `<button data-wfil="${k}" class="${k === wodFilter ? "on" : ""}" aria-pressed="${k === wodFilter}">${l}</button>`).join("")}</div>
+    <p class="muted fnote">Best for today first: fresh muscles, not done lately.</p><div class="wplist">${rows}</div>`;
+  $("#modal").hidden = false;
+}
+// ---- the timer: a 3-2-1 lead-in, then count up (for time), count down (AMRAP) or intervals (EMOM, Tabata, climb) ----
 let wodT = 0, wodPhase = null, wodLock = null, wodPending = null;
 function beep(n = 1, f = 880) {
   try { if (navigator.vibrate) navigator.vibrate(n > 1 ? [150, 80, 150] : 150); } catch (e) {}
@@ -785,13 +835,14 @@ async function keepAwake(on) {
 }
 function wodStart() {
   unlockBeep(); const w = wodChoice(), d = wodDay();
-  d.wodId = w.id; d.wodRun = { id: w.id, t0: Date.now(), rounds: 0 }; delete d.wodMore; save();
-  wodPhase = null; beep(2, 990); keepAwake(true); render(); wodTicking(); window.scrollTo(0, 0);
+  d.wodId = w.id; d.wodRun = { id: w.id, scale: d.wodScale || "rx", t0: Date.now() + 3000, rounds: 0, done: [] }; delete d.wodMore; save();
+  wodPhase = null; beep(1, 660); keepAwake(true); render(); wodTicking(); window.scrollTo(0, 0);
 }
 function wodTicking() { clearInterval(wodT); if (wodDay().wodRun) { wodT = setInterval(wodTick, 250); wodTick(); } }
-// what the clock shows now: { clock, now, phase (changes = a beep), end (true = time is up) }
+// what the clock shows now: { clock, now, phase (a change = a beep), end (true = time is up) }
 function wodState(w, el) {
   const mmss = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+  if (el < 0) return { clock: String(Math.ceil(-el)), now: "Get ready", phase: "r" + Math.ceil(-el), end: false };
   if (w.fmt === "amrap") { const left = w.min * 60 - el; return { clock: mmss(Math.max(0, left)), now: "left · as many rounds as you can", phase: left <= 3 ? `c${Math.ceil(left)}` : "go", end: left <= 0 }; }
   if (w.fmt === "emom") {
     const i = Math.floor(el / 60), list = i % 2 === 0 ? w.odd : w.even;
@@ -802,65 +853,110 @@ function wodState(w, el) {
     return { clock: `${Math.ceil(work ? 20 - s : 30 - s)}`, now: `Round ${Math.min(i + 1, 8)} of 8 · ${work ? moveName(m) : "Rest"}`, phase: `${i}${work}`, end: el >= 240 };
   }
   if (w.fmt === "climb") { const i = Math.floor(el / 60); return { clock: mmss(60 - el % 60), now: `Minute ${i + 1}: ${w.start + i} × ${moveName(w.moves[0]).toLowerCase()}`, phase: `m${i}`, end: false }; }
-  return { clock: mmss(el), now: w.fmt === "rounds" ? `${w.rest} s rest between rounds` : "Go at a steady pace", phase: "go", end: false };
+  return { clock: mmss(el), now: w.fmt === "rounds" ? `${w.rest} s rest between rounds` : "Steady pace", phase: "go", end: false };
 }
 function wodTick() {
   const run = wodDay().wodRun; if (!run) { clearInterval(wodT); return; }
-  const w = WOD_BY[run.id], el = Math.max(0, (Date.now() - run.t0) / 1000), st = wodState(w, el);
-  const c = $("#wclock"); if (c) { c.textContent = st.clock; $("#wnow").textContent = st.now; }
-  if (wodPhase !== null && st.phase !== wodPhase && !st.end) beep(/^c/.test(st.phase) ? 1 : 2, /^c/.test(st.phase) ? 660 : 990);
+  const w = wodOf(run.id, run.scale), el = ((run.paused || Date.now()) - run.t0) / 1000, st = wodState(w, el);
+  const c = $("#wclock"); if (c) { c.textContent = st.clock; $("#wnow").textContent = run.paused ? "Paused" : st.now; }
+  if (run.paused) return;
+  if (wodPhase !== null && st.phase !== wodPhase && !st.end) {
+    const lead = /^[cr]/.test(st.phase); beep(lead ? 1 : 2, lead ? 660 : 990);
+    const live = $("#wlive"); if (live) live.textContent = st.now;   // screen readers hear each new phase once
+  }
   wodPhase = st.phase;
   if (st.end && !run.ended) { run.ended = true; save(); beep(3, 1100); wodFinish(); }
 }
-// the result sheet: prefilled from the timer
+// a move ticked off; when every move of the round is ticked, the round counts and the list resets
+function wodMove(k) {
+  const r = wodDay().wodRun; if (!r) return;
+  const w = wodOf(r.id, r.scale); r.done = r.done || [];
+  r.done = r.done.includes(k) ? r.done.filter(x => x !== k) : r.done.concat(k);
+  if (r.done.length === w.moves.length) {
+    r.rounds = (r.rounds || 0) + 1; r.done = []; beep(2, 990); save();
+    if (r.rounds >= totalRounds(w)) { render(); wodFinish(); return; }
+  } else { beep(1, 770); save(); }
+  render();
+}
+function wodPause() {
+  const r = wodDay().wodRun; if (!r) return;
+  if (r.paused) { r.t0 += Date.now() - r.paused; delete r.paused; keepAwake(true); } else { r.paused = Date.now(); keepAwake(false); }
+  save(); render(); wodTick();
+}
+// the result sheet: prefilled from the timer and the checklist
 function wodFinish(quick) {
-  const d = wodDay(), run = quick ? { id: wodChoice().id, t0: Date.now(), rounds: 0, quick: true } : d.wodRun; if (!run) return;
-  wodPending = run; const w = WOD_BY[run.id], el = Math.round((Date.now() - run.t0) / 1000);
+  const d = wodDay(), run = quick ? { id: wodChoice().id, scale: d.wodScale || "rx", t0: Date.now(), rounds: 0, done: [], quick: true } : d.wodRun; if (!run) return;
+  wodPending = run; const w = wodOf(run.id, run.scale), el = Math.max(0, Math.round(((run.paused || Date.now()) - run.t0) / 1000));
+  const extra = (run.done || []).reduce((t, k) => t + (qtyAt(w, run.rounds || 0, w.moves[k]) || 0), 0);
   const timeIn = s => `<div class="inrow"><label>Time</label><input id="wd-min" type="number" inputmode="numeric" min="0" value="${s != null ? Math.floor(s / 60) : ""}" placeholder="min" aria-label="Minutes"> :
     <input id="wd-sec" type="number" inputmode="numeric" min="0" max="59" value="${s != null ? s % 60 : ""}" placeholder="sec" aria-label="Seconds"></div>`;
-  const num = (id, label, v) => `<div class="inrow"><label>${label}</label><input id="${id}" type="number" inputmode="numeric" min="0" value="${v}"></div>`;
+  const num = (id, label, v) => `<div class="inrow"><label for="${id}">${label}</label><input id="${id}" type="number" inputmode="numeric" min="0" value="${v}"></div>`;
   const fields = ["rft", "ladder", "scheme"].includes(w.fmt) ? timeIn(quick ? null : el)
-    : w.fmt === "amrap" ? num("wd-rounds", "Full rounds", run.rounds || 0) + num("wd-reps", "Extra reps", 0)
+    : w.fmt === "amrap" ? num("wd-rounds", "Full rounds", run.rounds || 0) + num("wd-reps", "Extra reps", extra)
     : w.fmt === "climb" ? num("wd-minutes", "Minutes you finished", quick ? "" : Math.max(0, Math.floor(el / 60)))
     : w.fmt === "rounds" ? num("wd-rounds", "Rounds done", run.rounds || w.rounds) : `<p class="muted">Every interval done? Save it.</p>`;
-  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>${esc(w.name)}</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
+  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>${esc(w.name)}${scaleTag(run.scale)}</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
     <p class="wfmt">${wodFmt(w)}</p>${fields}<button class="big primary" data-act="wod-save">Save result</button>
     ${quick ? "" : `<button class="big" data-close-modal>Back to the timer</button>`}`;
   $("#modal").hidden = false;
 }
 function wodSave() {
   const run = wodPending; if (!run) return;
-  const w = WOD_BY[run.id], v = id => { const e = $("#" + id); return e && e.value !== "" ? Math.max(0, parseInt(e.value) || 0) : null; };
+  const sc = run.scale || "rx", w = wodOf(run.id, sc), v = id => { const e = $("#" + id); return e && e.value !== "" ? Math.max(0, parseInt(e.value) || 0) : null; };
   let res = {};
   if (["rft", "ladder", "scheme"].includes(w.fmt)) { const m = v("wd-min"), s = v("wd-sec"); if (m == null && s == null) { toast("Enter your time", true); return; } res.secs = (m || 0) * 60 + Math.min(59, s || 0); }
   else if (w.fmt === "amrap") res = { rounds: v("wd-rounds") || 0, reps: v("wd-reps") || 0 };
   else if (w.fmt === "climb") { res.minutes = v("wd-minutes"); if (res.minutes == null) { toast("Enter the minutes you finished", true); return; } }
   else if (w.fmt === "rounds") res.rounds = Math.min(w.rounds, v("wd-rounds") ?? w.rounds);
-  const vol = wodVolume(w, res), load = wodLoad(vol), prev = wodBest(w.id);
-  const before = streak(), first = !activeDays().has(dayKey());
-  S.wods.push({ t: Date.now(), t0: run.t0, id: w.id, fmt: w.fmt, res, vol, load });
+  const vol = wodVolume(w, res), load = wodLoad(vol), prev = wodBest(w.id, sc);
+  const before = streak(), t0 = Math.min(run.t0, Date.now());
+  const x = { t: Date.now(), t0, id: w.id, scale: sc, fmt: w.fmt, res, vol, load };
+  S.wods.push(x);
   const d = wodDay(); delete d.wodRun; d.wodId = w.id; delete d.wodMore; wodPending = null; wodCancelArm = false;
   clearInterval(wodT); keepAwake(false); save();
   flashAt = Date.now(); flashM = Object.keys(load).filter(m => load[m] >= 1); flashWord = "WOD!";
-  $("#modal").hidden = true; render(); window.scrollTo(0, 0);
-  const n = streak(), r0 = rankOf(before), r1 = rankOf(n), better = prev && wodRank(w, res) != null && wodRank(w, res) > wodRank(w, prev.res);
-  if (better) celebrate(`${w.name}: ${wodScore(w, res)}. Your best was ${wodScore(w, prev.res)}.`);
-  else { toast(`${w.name}: ${wodScore(w, res)}. Logged.`); if (n > before && r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, n), 60); else if (first) setTimeout(() => suitUp(n), 60); }
+  render(); window.scrollTo(0, 0);
+  const n = streak(), r0 = rankOf(before), r1 = rankOf(n), up = n > before && r1.name !== r0.name && r1.from > 0 ? r1 : null;
+  const better = !!prev && wodRank(w, res) != null && wodRank(w, res) > wodRank(w, prev.res);
+  wodSummary(w, x, prev, better, up);
 }
-// Progress → Lifts: recent WOD results, with each workout's best marked
+// the finish screen, every time: the score, how it compares, what you did, what it worked
+function wodSummary(w, x, prev, better, up) {
+  const reps = Object.entries(x.vol).filter(([k]) => k !== "run" && k !== "hang").reduce((a, [, n]) => a + n, 0), runM = x.vol.run || 0;
+  const top = Object.entries(x.load).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m]) => MUSCLES[m].name.split(" ")[0].toLowerCase());
+  const secs = x.res.secs != null ? x.res.secs : Math.round((x.t - x.t0) / 1000), score = wodScore(w, x.res), n = streak();
+  $("#modal-body").innerHTML = `<div class="pr-card wsum">${clip(better ? "dive" : "land", "fxclip")}<p class="wsk">${better ? "New best" : prev ? "Workout done" : "First time"}</p>
+      <h2>${esc(w.name)}${scaleTag(x.scale)}</h2><div class="wscore">${score === "done" ? "Done" : score}</div>
+      <p class="wvs">${prev ? (better ? `Your best was ${wodScore(w, prev.res)}` : `Your best: ${wodScore(w, prev.res)}`) : "This is your mark to beat next time."}</p>
+      <div class="stats wst"><div class="stat"><b>${reps}</b><span>reps</span></div>${runM ? `<div class="stat"><b>${runM >= 1000 ? (runM / 1000).toFixed(1) + " km" : runM + " m"}</b><span>run</span></div>` : ""}
+        <div class="stat"><b>${fmtDur(secs)}</b><span>time</span></div><div class="stat"><b>${n}</b><span>day streak</span></div></div>
+      <p class="muted">Worked: ${top.join(", ")}</p>${up ? `<p class="rankup">And a new rank: <b>${up.name}</b> · ${n} days</p>` : ""}</div>
+    ${quoteCard(nextQuote(["discipline", "effort"], true))}<button class="big primary" data-close-modal>Done</button>`;
+  $("#modal").hidden = false;
+}
+// Progress → Lifts: your best on each workout (with the trend of your last two tries), then the latest results
 function wodHistory() {
-  if (!S.wods.length) return "";
-  const rows = S.wods.slice(-10).reverse().map(x => { const w = WOD_BY[x.id]; if (!w) return ""; const b = wodBest(x.id);
-    return `<div class="item"><span>${dayLabel(dayKey(x.t))} · ${esc(w.name)}</span><b>${wodScore(w, x.res)}${b === x && wodRank(w, x.res) != null ? " ★" : ""}</b></div>`; }).join("");
+  if (!S.wods.length) return `<h3>WODs</h3><div class="card empty"><p>No WODs yet. Each result you save lands here, with your best on every workout.</p>
+    <button class="small-btn primary" data-tab="home">Go to today's WOD</button></div>`;
+  const groups = {};
+  for (const x of S.wods) { const k = x.id + "|" + (x.scale || "rx"); (groups[k] = groups[k] || []).push(x); }
+  const bests = Object.entries(groups).map(([k, xs]) => {
+    const [id, sc] = k.split("|"), w = WOD_BY[id]; if (!w) return null;
+    const b = wodBest(id, sc), last = xs[xs.length - 1], prev = xs[xs.length - 2], rl = wodRank(w, last.res), rp = prev ? wodRank(w, prev.res) : null;
+    const tr = rl != null && rp != null ? (rl > rp ? `<span class="wtr up" aria-label="better than the time before">↑</span>` : rl < rp ? `<span class="wtr dn" aria-label="not as good as the time before">↓</span>` : "") : "";
+    return { t: last.t, h: `<div class="item"><span>${esc(w.name)}${scaleTag(sc)} <small class="muted">${xs.length}×</small></span><b>${b ? wodScore(w, b.res) : "done"} ${tr}</b></div>` };
+  }).filter(Boolean).sort((a, b) => b.t - a.t).map(o => o.h).join("");
+  const recent = S.wods.slice(-5).reverse().map(x => { const w = WOD_BY[x.id]; return w ? `<div class="item"><span>${dayLabel(dayKey(x.t))} · ${esc(w.name)}</span><b>${wodScore(w, x.res)}</b></div>` : ""; }).join("");
   const wk = S.wods.filter(x => weekStart(dayKey(x.t)) === weekStart(dayKey())).length;
-  return `<h3>WODs</h3><div class="card"><p class="muted cnote">${S.wods.length} done · ${wk} this week · ★ = your best on that workout</p>${rows}</div>`;
+  return `<h3>WODs · your bests</h3><div class="card"><p class="muted cnote">${S.wods.length} done · ${wk} this week · arrow = your last try against the one before</p>${bests}</div>
+    <h3>Latest WODs</h3><div class="card">${recent}</div>`;
 }
 // for the widget: today's WOD as rows
 function wodWidget() {
-  const d = wodDay(), done = S.wods.filter(x => dayKey(x.t) === dayKey()), w = d.wodRun ? WOD_BY[d.wodRun.id] : done.length && !d.wodMore ? WOD_BY[done[done.length - 1].id] : wodChoice();
+  const d = wodDay(), done = S.wods.filter(x => dayKey(x.t) === dayKey());
+  const w = d.wodRun ? wodOf(d.wodRun.id, d.wodRun.scale) : done.length && !d.wodMore ? WOD_BY[done[done.length - 1].id] : wodOf(wodChoice().id, d.wodScale);
   if (!w) return null;
-  const finished = !d.wodRun && done.some(x => x.id === w.id);
-  const list = w.fmt === "emom" ? w.odd.concat(w.even) : w.moves;
+  const finished = !d.wodRun && done.some(x => x.id === w.id), list = w.fmt === "emom" ? w.odd.concat(w.even) : w.moves;
   return { title: `WOD · ${w.name}`, started: !!d.wodRun, done: finished,
     items: (finished ? [{ n: fmtShort(w), t: wodScore(w, done.filter(x => x.id === w.id).pop().res), s: 2 }] : [{ n: fmtShort(w), t: `~${wodMinutes(w)} min`, s: 0 }])
       .concat(list.map(m => ({ n: moveName(m), t: m[1] ? moveQty(m) : w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : "", s: finished ? 2 : 0 }))) };
@@ -915,8 +1011,8 @@ function backupBanner() {
   const st = S.settings, every = st.backupEvery ?? 7; if (!every || logDay) return "";
   const since = st.lastBackup || 0, due = Date.now() - since >= every * 864e5, snoozed = st.backupSnooze && Date.now() - st.backupSnooze < 864e5;
   if (!due || snoozed || (!S.sets.length && !S.runs.length && !S.wods.length)) return "";
-  return '<div class="card bkup" role="status"><div><b>Time for a backup</b><span>' + (since ? "Last one " + agoMin(since) : "No backup yet") + ' · your data lives only on this phone</span></div>'
-    + '<button class="small-btn primary" data-act="backup">Back up now</button><button class="link" data-act="backup-later">Later</button></div>';
+  return '<div class="card bkup" role="status"><div><b>Back up your training</b><span>' + (since ? "Last backup " + agoMin(since) : "Never backed up") + '. It lives only on this phone.</span></div>'
+    + '<button class="small-btn primary" data-act="backup">Back up</button><button class="xbtn" data-act="backup-later" aria-label="Remind me tomorrow">×</button></div>';
 }
 
 // ---------- rounds: today's workouts, one after another, as many as you want ----------
@@ -1141,7 +1237,7 @@ function widgetSection() {
   if (on && sent) return `<h3>Home-screen widget</h3><div class="card wsetup"><div class="inrow"><span>Last sent ${agoMin(sent)}</span><button class="small-btn primary" data-act="widget-send">Send now</button></div>
     ${fold("widget", "Set up again", "Copy the script, steps", `<button class="big" data-act="widget-copy">Copy widget script</button>
       <p class="muted fnote">In Scriptable: open the <b>Unbothered</b> script, select all, paste. Then tap Send now. Script: <a href="widget/unbothered-widget.js" target="_blank">widget/unbothered-widget.js</a></p>`)}</div>`;
-  return `<h3>Home-screen widget</h3><div class="card wsetup">
+  return fold("widget-setup", "Home-screen widget", "Your streak and today's WOD on the home screen", `<div class="wsetup">
     <p>Your streak and today's workout on your home screen, through the free <b>Scriptable</b> app.</p>
     <ol>
       <li>Install <b>Scriptable</b> from the App Store.</li>
@@ -1153,7 +1249,7 @@ function widgetSection() {
     <button class="big" data-act="widget-copy">Copy widget script</button>
     <button class="big ${on ? "primary" : ""}" data-act="widget-send">Send to widget</button>
     <p class="muted rhelp">The widget updates when you tap <b>⇪ Widget</b> on the Train screen (after training, or in the morning for the day's plan). ${sent ? `Last sent ${agoMin(sent)}.` : ""}
-      Script: <a href="widget/unbothered-widget.js" target="_blank">widget/unbothered-widget.js</a></p></div>`;
+      Script: <a href="widget/unbothered-widget.js" target="_blank">widget/unbothered-widget.js</a></p></div>`);
 }
 const agoMin = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 // the path: the last 7 days (height = how much you did) and the next 3 if you keep going
@@ -1185,7 +1281,7 @@ function pathCard() {
     + fut.map(f => `<span class="${f.rk ? "rk" : ""}">${WD[keyToDate(f.k).getDay()][0]}${f.rest ? "·rest" : ""}</span>`).join("");
   let next = "";
   if (r.next && n) { const when = r.next[0] - n - (doneToday ? 0 : 1); next = `${r.next[1]} ${when <= 0 ? "today" : when === 1 ? "tomorrow" : `in ${when} days`}`; }
-  const line = !n ? "Log a set or a run to start a streak."
+  const line = !n ? "Start today: a WOD, a set or a run all count. One rest day in seven keeps a streak alive."
     : doneToday ? (r.next ? "Done for today. Keep the thread." : "The highest rank. Keep going.")
     : info.restOk ? "Rest day available. Your streak is safe today."
     : `<span class="risk">Train today to make it ${n + 1}.</span>`;
@@ -1528,7 +1624,7 @@ function progressView() {
   const seg = `<div class="seg ptabs" role="tablist">${[["body", "Body"], ["lifts", "Lifts"], ["cardio", "Cardio"]].map(([k, n]) =>
     `<button role="tab" aria-selected="${k === pt}" data-ptab="${k}" class="${k === pt ? "on" : ""}">${n}</button>`).join("")}</div>`;
   if (pt === "body") return `<h1>Progress</h1>${seg}${bodyMap()}${calendarCard()}${bodyWeightCard()}`;
-  if (pt === "cardio") return `<h1>Progress</h1>${seg}${runsProgress() || `<div class="card muted">No runs, swims or games yet. Add one from the Train screen.</div>`}`;
+  if (pt === "cardio") return `<h1>Progress</h1>${seg}${runsProgress() || `<div class="card empty"><p>No runs, swims or games yet. Add one from a Garmin file, Apple Health or by hand, and your weekly distance and heart-rate zones show up here.</p><button class="small-btn primary" data-run-add>Add a run</button></div>`}`;
   return `<h1>Progress</h1>${seg}${wodHistory()}<div class="chips">${chips}</div>${stats}
     <h3>${bestTitle}</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
@@ -1584,6 +1680,11 @@ function moreView() {
       <br><br>And ${QUOTES.filter(q => q.k === "spirit").length} in the Stoic spirit, from films, poems and speeches: the Dark Knight trilogy, Rocky, Roosevelt's man in the arena, Invictus, Kipling, Shakespeare, Frankl and more.
       Poems and speeches follow the printed texts; film lines are kept short and match the common transcripts.`;
   return `<h1>More</h1>
+    <h3>Backup</h3><div class="card">
+      <button class="big primary" data-act="backup">Back up now</button>
+      <div class="inrow"><label>Remind me every</label><select data-backup-every aria-label="Backup reminder">${[[1, "day"], [3, "3 days"], [7, "week"], [14, "2 weeks"], [0, "never"]].map(([v, l]) => `<option value="${v}"${(st.backupEvery ?? 7) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+      <p class="muted fnote">Last backup: ${st.lastBackup ? `${dayLabel(dayKey(st.lastBackup))} (${agoMin(st.lastBackup)})` : "never"}. Each backup is two files: <b>unbothered-….json</b> (everything, for Import) and <b>unbothered-activities-….csv</b> (laid out like Garmin Connect's activity export: runs, swims, games, WODs and each day's strength work). Save them to iCloud Drive or Files.</p>
+      <div class="btn2"><button class="big" data-act="export">JSON only</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden></div>
     <h3>Body weight</h3><div class="card">
       <div class="inrow bwin"><label for="bw-in">Today</label><input id="bw-in" type="number" inputmode="decimal" step="0.1" placeholder="${fmtKg(bwOn(today))}" value="${S.body[today] ?? ""}"><span class="unit">kg</span><button class="small-btn primary" data-act="bw">Save</button></div>
       ${bwRows}${bwKeys.length > 1 ? `<button class="link morelink" data-act="bw-trend">See the trend in Progress ›</button>` : ""}</div>
@@ -1595,11 +1696,6 @@ function moreView() {
     <div class="card"><label class="fl">Look</label><div class="looks">${Object.keys(LOOKS).map(k => `<button data-look-set="${k}" class="${(LOOKS[st.look] ? st.look : "gotham") === k ? "on" : ""}" aria-label="${LOOKS[k].name} look"><i class="lk-${k}"></i><span>${LOOKS[k].name}</span></button>`).join("")}</div>
       ${st.look === "classic" ? `<div class="inrow"><label>Classic</label><div class="seg mini">
       <button data-theme-set="dark" class="${st.theme === "dark" ? "on" : ""}">Dark</button><button data-theme-set="light" class="${st.theme === "light" ? "on" : ""}">Light</button></div></div>` : ""}</div>
-    <h3>Backup</h3><div class="card">
-      <button class="big primary" data-act="backup">Back up now</button>
-      <div class="inrow"><label>Remind me every</label><select data-backup-every aria-label="Backup reminder">${[[1, "day"], [3, "3 days"], [7, "week"], [14, "2 weeks"], [0, "never"]].map(([v, l]) => `<option value="${v}"${(st.backupEvery ?? 7) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
-      <p class="muted fnote">Last backup: ${st.lastBackup ? `${dayLabel(dayKey(st.lastBackup))} (${agoMin(st.lastBackup)})` : "never"}. Each backup is two files: <b>unbothered-….json</b> (everything, for Import) and <b>unbothered-activities-….csv</b> (laid out like Garmin Connect's activity export: runs, swims, games, WODs and each day's strength work). Save them to iCloud Drive or Files.</p>
-      <div class="btn2"><button class="big" data-act="export">JSON only</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden></div>
     ${fold("about", "About the quotes", `${QUOTES.length} quotes and where they come from`, `<p class="muted fnote">${about}</p>`)}
     <p class="muted ver">Unbothered · formerly Unbowed and Stoic Reps</p>`;
 }
@@ -1621,6 +1717,12 @@ document.addEventListener("click", e => {
   if (d.act === "widget-send") { S.settings.widgetOn = true; sendToWidget(); return; }
   if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "next-open") { nextOpen = true; render(); return; }
+  if (d.act === "wod-pick") { wodPicker(); return; }
+  if (d.wpick) { wodDay().wodId = d.wpick; save(); $("#modal").hidden = true; render(); window.scrollTo(0, 0); return; }
+  if (d.wfil) { wodFilter = d.wfil; wodPicker(); return; }
+  if (d.wscale) { wodDay().wodScale = d.wscale; save(); render(); return; }
+  if (d.act === "wod-move") { wodMove(+d.i); return; }
+  if (d.act === "wod-pause") { wodPause(); return; }
   if (d.act === "wod-start") { wodStart(); return; }
   if (d.act === "wod-another") { const x = wodDay(); x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
   if (d.act === "wod-more") { const x = wodDay(); x.wodMore = true; x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
