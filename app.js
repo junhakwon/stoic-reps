@@ -1,4 +1,4 @@
-// Unbowed (formerly Stoic Reps): a small offline training log. All data stays on this device (localStorage), with JSON backup.
+// Unbothered (formerly Stoic Reps): a small offline training log. All data stays on this device (localStorage), with JSON backup.
 "use strict";
 
 // ---------- exercises ----------
@@ -41,6 +41,7 @@ function defaults() {
       { id: 5, ex: "squat", reps: 10, kg: 20, label: "10 goblet squats with 20 kg" },
     ],
     sets: [],          // { t, ex, reps, kg, v (push-up variation / pull-up type), gtg }
+    wods: [],          // workouts of the day: { t, t0, id, fmt, res, vol, load } (see "WOD of the day")
     runs: [],          // { t (start), dur (s), dist (m), kcal, avgHr, maxHr, sport, hr: { bpm: s }, trace, src: fit|gpx|tcx|hand }
     body: {},          // "YYYY-MM-DD": kg
     daily: {},         // "YYYY-MM-DD": { creatine, protein }
@@ -60,6 +61,7 @@ function fillIn(s) {
   s.settings = Object.assign({}, d, s.settings);
   for (const k of ["ranges", "gtg", "gtgKg", "rest", "baseline"]) s.settings[k] = Object.assign({}, d[k], s.settings[k]);
   if (!Array.isArray(s.runs)) s.runs = [];
+  if (!Array.isArray(s.wods)) s.wods = [];
   return s;
 }
 function save() { memoBox.clear(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("Could not save on this device", true); } }
@@ -99,8 +101,8 @@ const fmtKg = kg => (Math.round(kg * 10) / 10).toString();
 const setsOf = ex => S.sets.filter(s => s.ex === ex);
 const bwOn = k => { const ks = Object.keys(S.body).filter(d => d <= k).sort(); return ks.length ? S.body[ks[ks.length - 1]] : S.settings.bodyweight; };
 const epley = (w, r) => w * (1 + r / 30);
-// a day counts as active when you logged a set or a run
-const activeDays = () => memo("active", () => new Set(S.sets.map(s => dayKey(s.t)).concat(S.runs.map(r => dayKey(r.t)))));
+// a day counts as active when you logged a set, a run or a WOD
+const activeDays = () => memo("active", () => new Set(S.sets.map(s => dayKey(s.t)).concat(S.runs.map(r => dayKey(r.t)), S.wods.map(x => dayKey(x.t)))));
 
 function range(ex, kg) {
   const r = S.settings.ranges[ex];
@@ -574,12 +576,13 @@ function render() {
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
 function homeView() {
   const d = curDay(), daily = S.daily[d] || {}, st = muscleState();
-  return `<div class="hdr"><h1>Unbowed</h1>
+  return `<div class="hdr"><h1>Unbothered</h1>
       <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
     ${readyCard(st)}
-    ${planCard()}
+    ${wodCard()}
+    ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
     ${pathCard()}
     <div class="ticks"><button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
       <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button></div>
@@ -656,6 +659,211 @@ function livePlan() {
   }
   return { plan, run, out };
 }
+// ---------- WOD of the day (wods.js): one CrossFit-style workout a day, picked by how fresh you are and variety ----------
+// Results are kept in S.wods = [{ t (finished), t0 (started), id, fmt, res, vol: { move: reps }, load: { muscle: units } }].
+// load feeds recovery, the body map, the streak, the path and the calendar like sets and runs do; vol never touches set records.
+const WOD_BY = Object.fromEntries(WODS.map(w => [w.id, w]));
+const MV = { run: "Run", hang: "Hang", pushsquat: "Push-up + squat" };
+const moveName = m => m[0] === "pushup" && m[3] ? `Push-ups (${PUSH_VAR[m[3]].toLowerCase()})` : EX[m[0]] ? EX[m[0]].name : MV[m[0]];
+const moveQty = (m, n = m[1]) => m[0] === "run" ? `${n} m` : m[0] === "hang" ? `${n} s` : m[0] === "lunge" ? `${n}/leg` : `${n}`;
+const swapNote = m => m[2] ? ` <span class="wsw">for ${esc(m[2])}</span>` : "";
+const SEC = { pullup: 3, pushup: 2, squat: 2, lunge: 4, kneeraise: 3, legraise: 3.5, pushsquat: 5, run: .3, hang: 1 };   // seconds per rep, metre or second
+const PER_UNIT = { pullup: 5, pushup: 10, squat: 12, lunge: 6, kneeraise: 10, legraise: 8, run: 500, hang: 60 };       // this much ≈ one working set
+function wodFmt(w) {   // only the line for this workout's format is built
+  const F = { rft: () => w.rounds === 1 ? "For time" : `${w.rounds} rounds for time`, amrap: () => `${w.min}-min AMRAP: as many rounds as you can`,
+    emom: () => `EMOM ${w.min} min: a new start every minute`, tabata: () => "Tabata: 8 × 20 s work / 10 s rest, the moves take turns",
+    ladder: () => `Ladder: 1 of each, then 2, 3… up to ${w.top}. For time`, scheme: () => `${w.scheme.join("-")} reps of each, for time`,
+    climb: () => `Every minute: ${w.start} reps in minute 1, one more each minute, until you can't finish inside the minute`,
+    rounds: () => `${w.rounds} rounds, ${w.rest} s rest between` };
+  return F[w.fmt] ? F[w.fmt]() : "";
+}
+const fmtShort = w => ({ rft: w.rounds === 1 ? "For time" : `${w.rounds} RFT`, amrap: `${w.min}' AMRAP`, emom: `EMOM ${w.min}'`, tabata: "Tabata", ladder: "Ladder", scheme: w.scheme && w.scheme.join("-"), climb: "Climb", rounds: `${w.rounds} rounds` }[w.fmt]);
+// how much of each move a workout is: the whole thing as written (AMRAP and climb: a fair guess), or what a result says was done
+function wodVolume(w, res) {
+  const V = {}, add = (k, n) => { if (n > 0) V[k] = (V[k] || 0) + n; }, once = l => l.reduce((t, m) => t + SEC[m[0]] * m[1], 0);
+  if (w.fmt === "rft" || w.fmt === "rounds") { const r = res && res.rounds != null ? res.rounds : w.rounds; for (const m of w.moves) add(m[0], m[1] * r); }
+  else if (w.fmt === "amrap") {
+    const r = res ? res.rounds || 0 : w.min * 60 / (once(w.moves) + 6); let extra = res ? res.reps || 0 : 0;
+    for (const m of w.moves) { add(m[0], m[1] * r); const e = Math.min(extra, m[1]); add(m[0], e); extra -= e; }
+  } else if (w.fmt === "ladder") for (const m of w.moves) add(m[0], w.top * (w.top + 1) / 2);
+  else if (w.fmt === "scheme") for (const m of w.moves) add(m[0], w.scheme.reduce((a, b) => a + b, 0));
+  else if (w.fmt === "tabata") for (const m of w.moves) add(m[0], 4 * Math.round(20 / SEC[m[0]]));
+  else if (w.fmt === "emom") { for (const m of w.odd) add(m[0], m[1] * Math.ceil(w.min / 2)); for (const m of w.even) add(m[0], m[1] * Math.floor(w.min / 2)); }
+  else if (w.fmt === "climb") { const n = res ? res.minutes || 0 : 6; add(w.moves[0][0], n * w.start + n * (n - 1) / 2); }
+  for (const k in V) V[k] = Math.round(V[k]);
+  return V;
+}
+function wodLoad(V) {
+  const L = {}, put = (ms, u) => { for (const m of ms) L[m] = (L[m] || 0) + u; };
+  for (const [k, n] of Object.entries(V)) {
+    if (k === "pushsquat") { put(MUSCLE_OF.pushup, n / PER_UNIT.pushup); put(MUSCLE_OF.squat, n / PER_UNIT.squat); }
+    else if (k === "run") put(["quads", "calves"], n / PER_UNIT.run);
+    else if (k === "hang") put(["forearms", "lats"], n / PER_UNIT.hang);
+    else put(MUSCLE_OF[k], n / PER_UNIT[k]);
+  }
+  for (const m in L) L[m] = Math.round(Math.min(REC_FULL, L[m]) * 100) / 100;
+  return L;
+}
+function wodMinutes(w) {
+  if (w.min) return w.min; if (w.fmt === "tabata") return 4; if (w.fmt === "climb") return 8;
+  const V = wodVolume(w); let s = 0;
+  for (const [k, n] of Object.entries(V)) s += SEC[k] * n;
+  return Math.max(4, Math.round((s + (w.rest || 0) * ((w.rounds || 1) - 1)) / 60));
+}
+// best first: little work for tired muscles, not done lately, a sensible length; a daily shuffle breaks ties
+function wodPicks() {
+  return memo("wodPicks", () => {
+    const rec = recovery(keyToDate(dayKey()).getTime()), last = {};
+    for (const x of S.wods) { const d = daysSince(dayKey(x.t)); if (last[x.id] == null || d < last[x.id]) last[x.id] = d; }
+    const score = w => {
+      const L = wodLoad(wodVolume(w)); let pen = 0;
+      for (const m in L) pen += L[m] * Math.max(0, 70 - rec[m]) / 70;
+      const d = last[w.id] == null ? 30 : last[w.id], mins = wodMinutes(w);
+      return Math.min(d, 21) / 21 * 2 - pen * .6 - (mins > 35 ? 1.2 : 0) + (hash(dayKey() + w.id) % 100) / 150;
+    };
+    return WODS.map(w => ({ w, s: score(w) })).sort((a, b) => b.s - a.s).map(x => x.w);
+  });
+}
+const wodDay = () => { const t = dayKey(); return S.daily[t] || (S.daily[t] = {}); };
+function wodChoice() { const d = wodDay(), p = wodPicks(); return d.wodId && WOD_BY[d.wodId] ? WOD_BY[d.wodId] : p[(d.wodSkip || 0) % p.length]; }
+const wodScore = (w, res) => !res ? "" : res.secs != null ? fmtDur(res.secs) : w.fmt === "amrap" ? `${res.rounds} round${res.rounds === 1 ? "" : "s"}${res.reps ? ` + ${res.reps}` : ""}`
+  : w.fmt === "climb" ? `${res.minutes} minute${res.minutes === 1 ? "" : "s"}` : res.rounds != null && w.fmt === "rounds" ? `${res.rounds} of ${w.rounds} rounds` : "done";
+const wodRank = (w, res) => !res ? -Infinity : res.secs != null ? -res.secs : w.fmt === "amrap" ? (res.rounds || 0) * 1000 + (res.reps || 0) : w.fmt === "climb" ? res.minutes || 0 : null;
+function wodBest(id) {
+  const w = WOD_BY[id]; let b = null;
+  for (const x of S.wods) if (x.id === id && wodRank(w, x.res) != null && (!b || wodRank(w, x.res) > wodRank(w, b.res))) b = x;
+  return b;
+}
+function wodMoves(w) {
+  const li = m => `<li><b>${m[1] ? moveQty(m) : ""}</b><span>${moveName(m)}${swapNote(m)}</span></li>`;
+  if (w.fmt === "emom") return `<p class="wgrp">Odd minutes</p><ol class="wmoves">${w.odd.map(li).join("")}</ol><p class="wgrp">Even minutes</p><ol class="wmoves">${w.even.map(li).join("")}</ol>`;
+  if (w.fmt === "climb") { const m = w.moves[0]; return `<ol class="wmoves"><li><b>${w.start}, ${w.start + 1}, ${w.start + 2}…</b><span>${moveName(m)}${swapNote(m)}</span></li></ol>`; }
+  const tag = w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : w.fmt === "tabata" ? "20 s" : "";
+  return `<ol class="wmoves">${w.moves.map(m => tag ? `<li><b>${tag}</b><span>${moveName(m)}${swapNote(m)}</span></li>` : li(m)).join("")}</ol>`;
+}
+let wodCancelArm = false;
+function wodCard() {
+  if (logDay) return "";
+  const d = wodDay(), run = d.wodRun, doneToday = S.wods.filter(x => dayKey(x.t) === dayKey());
+  if (run && WOD_BY[run.id]) {
+    const w = WOD_BY[run.id], counts = ["rft", "amrap", "rounds"].includes(w.fmt) && !(w.fmt === "rft" && w.rounds === 1);
+    return `<div class="card wod wrun"><div class="plhead"><b>${esc(w.name)}</b><span class="muted">${fmtShort(w)}</span></div>
+      <div class="wclock" id="wclock" aria-live="off">0:00</div><p class="wnow" id="wnow"></p>
+      ${counts ? `<button class="wcount" data-act="wod-round"><b id="wrounds">${run.rounds || 0}</b><span>rounds done · tap +1</span></button>` : ""}
+      ${wodMoves(w)}
+      <button class="big primary" data-act="wod-finish">Finish</button>
+      <button class="link wcancel" data-act="wod-cancel">${wodCancelArm ? "Tap again to cancel the workout" : "Cancel"}</button></div>`;
+  }
+  const rows = doneToday.map(x => { const w = WOD_BY[x.id]; return w ? `<div class="rdone"><span class="plck" aria-hidden="true">✓</span><b>${esc(w.name)}</b><span>${wodScore(w, x.res)}</span></div>` : ""; }).join("");
+  if (doneToday.length && !d.wodMore) return `<div class="card plan wod"><div class="plhead"><b>Today's WOD</b><span class="muted">done</span>${widgetBtn()}</div>${rows}
+      <button class="big wmore" data-act="wod-more">Another WOD</button></div>`;
+  const w = wodChoice(); if (!w) return "";
+  const rec = recovery(), rd = readiness(rec), best = wodBest(w.id), L = wodLoad(wodVolume(w));
+  const tired = Object.keys(L).filter(m => L[m] >= 1 && rec[m] < 50).map(m => MUSCLES[m].name.split(" ")[0].toLowerCase());
+  const lastDone = S.wods.filter(x => x.id === w.id).pop();
+  const why = [lastDone ? `Last done ${agoText(daysSince(dayKey(lastDone.t)))}` : "New for you", best ? `best ${wodScore(w, best.res)}` : ""].filter(Boolean).join(" · ");
+  return `${rows ? `<div class="card plan rdlist"><div class="plhead"><b>Done today</b></div>${rows}</div>` : ""}
+    <div class="card wod"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">${fmtShort(w)} · ~${wodMinutes(w)} min</span>${doneToday.length ? "" : widgetBtn()}</div>
+    <h2 class="wname">${esc(w.name)}</h2><p class="wfmt">${wodFmt(w)}</p>
+    ${wodMoves(w)}${w.note ? `<p class="muted wnote">${esc(w.note)}</p>` : ""}
+    <p class="muted wwhy">${why}${tired.length ? ` · <span class="tired">${cap(tired.join(" and "))} still tired: go easy</span>` : ""}</p>
+    ${rd < 45 && !doneToday.length ? `<p class="wwarn">You're ${rd}% recovered. An easy walk would also be a good day's work.</p>` : ""}
+    <button class="big primary" data-act="wod-start">Start</button>
+    <div class="wbtns"><button class="small-btn" data-act="wod-another">Show another</button><button class="small-btn" data-act="wod-log">Log without timer</button></div></div>`;
+}
+// ---- the timer: count up (for time), count down (AMRAP), or intervals (EMOM, Tabata, climb), with beeps ----
+let wodT = 0, wodPhase = null, wodLock = null, wodPending = null;
+function beep(n = 1, f = 880) {
+  try { if (navigator.vibrate) navigator.vibrate(n > 1 ? [150, 80, 150] : 150); } catch (e) {}
+  try { if (beepCtx) for (let i = 0; i < n; i++) { const o = beepCtx.createOscillator(), g = beepCtx.createGain(), t0 = beepCtx.currentTime + i * .22;
+    o.frequency.value = f; g.gain.setValueAtTime(.3, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + .18); o.connect(g); g.connect(beepCtx.destination); o.start(t0); o.stop(t0 + .18); } } catch (e) {}
+}
+async function keepAwake(on) {
+  try { if (on && navigator.wakeLock && !wodLock) wodLock = await navigator.wakeLock.request("screen"); else if (!on && wodLock) { await wodLock.release(); wodLock = null; } } catch (e) { wodLock = null; }
+}
+function wodStart() {
+  unlockBeep(); const w = wodChoice(), d = wodDay();
+  d.wodId = w.id; d.wodRun = { id: w.id, t0: Date.now(), rounds: 0 }; delete d.wodMore; save();
+  wodPhase = null; beep(2, 990); keepAwake(true); render(); wodTicking(); window.scrollTo(0, 0);
+}
+function wodTicking() { clearInterval(wodT); if (wodDay().wodRun) { wodT = setInterval(wodTick, 250); wodTick(); } }
+// what the clock shows now: { clock, now, phase (changes = a beep), end (true = time is up) }
+function wodState(w, el) {
+  const mmss = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+  if (w.fmt === "amrap") { const left = w.min * 60 - el; return { clock: mmss(Math.max(0, left)), now: "left · as many rounds as you can", phase: left <= 3 ? `c${Math.ceil(left)}` : "go", end: left <= 0 }; }
+  if (w.fmt === "emom") {
+    const i = Math.floor(el / 60), list = i % 2 === 0 ? w.odd : w.even;
+    return { clock: mmss(60 - el % 60), now: `Minute ${Math.min(i + 1, w.min)} of ${w.min} · ${list.map(m => `${moveQty(m)} ${moveName(m).toLowerCase()}`).join(", ")}`, phase: `m${i}`, end: el >= w.min * 60 };
+  }
+  if (w.fmt === "tabata") {
+    const i = Math.floor(el / 30), s = el % 30, work = s < 20, m = w.moves[i % w.moves.length];
+    return { clock: `${Math.ceil(work ? 20 - s : 30 - s)}`, now: `Round ${Math.min(i + 1, 8)} of 8 · ${work ? moveName(m) : "Rest"}`, phase: `${i}${work}`, end: el >= 240 };
+  }
+  if (w.fmt === "climb") { const i = Math.floor(el / 60); return { clock: mmss(60 - el % 60), now: `Minute ${i + 1}: ${w.start + i} × ${moveName(w.moves[0]).toLowerCase()}`, phase: `m${i}`, end: false }; }
+  return { clock: mmss(el), now: w.fmt === "rounds" ? `${w.rest} s rest between rounds` : "Go at a steady pace", phase: "go", end: false };
+}
+function wodTick() {
+  const run = wodDay().wodRun; if (!run) { clearInterval(wodT); return; }
+  const w = WOD_BY[run.id], el = Math.max(0, (Date.now() - run.t0) / 1000), st = wodState(w, el);
+  const c = $("#wclock"); if (c) { c.textContent = st.clock; $("#wnow").textContent = st.now; }
+  if (wodPhase !== null && st.phase !== wodPhase && !st.end) beep(/^c/.test(st.phase) ? 1 : 2, /^c/.test(st.phase) ? 660 : 990);
+  wodPhase = st.phase;
+  if (st.end && !run.ended) { run.ended = true; save(); beep(3, 1100); wodFinish(); }
+}
+// the result sheet: prefilled from the timer
+function wodFinish(quick) {
+  const d = wodDay(), run = quick ? { id: wodChoice().id, t0: Date.now(), rounds: 0, quick: true } : d.wodRun; if (!run) return;
+  wodPending = run; const w = WOD_BY[run.id], el = Math.round((Date.now() - run.t0) / 1000);
+  const timeIn = s => `<div class="inrow"><label>Time</label><input id="wd-min" type="number" inputmode="numeric" min="0" value="${s != null ? Math.floor(s / 60) : ""}" placeholder="min" aria-label="Minutes"> :
+    <input id="wd-sec" type="number" inputmode="numeric" min="0" max="59" value="${s != null ? s % 60 : ""}" placeholder="sec" aria-label="Seconds"></div>`;
+  const num = (id, label, v) => `<div class="inrow"><label>${label}</label><input id="${id}" type="number" inputmode="numeric" min="0" value="${v}"></div>`;
+  const fields = ["rft", "ladder", "scheme"].includes(w.fmt) ? timeIn(quick ? null : el)
+    : w.fmt === "amrap" ? num("wd-rounds", "Full rounds", run.rounds || 0) + num("wd-reps", "Extra reps", 0)
+    : w.fmt === "climb" ? num("wd-minutes", "Minutes you finished", quick ? "" : Math.max(0, Math.floor(el / 60)))
+    : w.fmt === "rounds" ? num("wd-rounds", "Rounds done", run.rounds || w.rounds) : `<p class="muted">Every interval done? Save it.</p>`;
+  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>${esc(w.name)}</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
+    <p class="wfmt">${wodFmt(w)}</p>${fields}<button class="big primary" data-act="wod-save">Save result</button>
+    ${quick ? "" : `<button class="big" data-close-modal>Back to the timer</button>`}`;
+  $("#modal").hidden = false;
+}
+function wodSave() {
+  const run = wodPending; if (!run) return;
+  const w = WOD_BY[run.id], v = id => { const e = $("#" + id); return e && e.value !== "" ? Math.max(0, parseInt(e.value) || 0) : null; };
+  let res = {};
+  if (["rft", "ladder", "scheme"].includes(w.fmt)) { const m = v("wd-min"), s = v("wd-sec"); if (m == null && s == null) { toast("Enter your time", true); return; } res.secs = (m || 0) * 60 + Math.min(59, s || 0); }
+  else if (w.fmt === "amrap") res = { rounds: v("wd-rounds") || 0, reps: v("wd-reps") || 0 };
+  else if (w.fmt === "climb") { res.minutes = v("wd-minutes"); if (res.minutes == null) { toast("Enter the minutes you finished", true); return; } }
+  else if (w.fmt === "rounds") res.rounds = Math.min(w.rounds, v("wd-rounds") ?? w.rounds);
+  const vol = wodVolume(w, res), load = wodLoad(vol), prev = wodBest(w.id);
+  const before = streak(), first = !activeDays().has(dayKey());
+  S.wods.push({ t: Date.now(), t0: run.t0, id: w.id, fmt: w.fmt, res, vol, load });
+  const d = wodDay(); delete d.wodRun; d.wodId = w.id; delete d.wodMore; wodPending = null; wodCancelArm = false;
+  clearInterval(wodT); keepAwake(false); save();
+  flashAt = Date.now(); flashM = Object.keys(load).filter(m => load[m] >= 1); flashWord = "WOD!";
+  $("#modal").hidden = true; render(); window.scrollTo(0, 0);
+  const n = streak(), r0 = rankOf(before), r1 = rankOf(n), better = prev && wodRank(w, res) != null && wodRank(w, res) > wodRank(w, prev.res);
+  if (better) celebrate(`${w.name}: ${wodScore(w, res)}. Your best was ${wodScore(w, prev.res)}.`);
+  else { toast(`${w.name}: ${wodScore(w, res)}. Logged.`); if (n > before && r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, n), 60); else if (first) setTimeout(() => suitUp(n), 60); }
+}
+// Progress → Lifts: recent WOD results, with each workout's best marked
+function wodHistory() {
+  if (!S.wods.length) return "";
+  const rows = S.wods.slice(-10).reverse().map(x => { const w = WOD_BY[x.id]; if (!w) return ""; const b = wodBest(x.id);
+    return `<div class="item"><span>${dayLabel(dayKey(x.t))} · ${esc(w.name)}</span><b>${wodScore(w, x.res)}${b === x && wodRank(w, x.res) != null ? " ★" : ""}</b></div>`; }).join("");
+  const wk = S.wods.filter(x => weekStart(dayKey(x.t)) === weekStart(dayKey())).length;
+  return `<h3>WODs</h3><div class="card"><p class="muted cnote">${S.wods.length} done · ${wk} this week · ★ = your best on that workout</p>${rows}</div>`;
+}
+// for the widget: today's WOD as rows
+function wodWidget() {
+  const d = wodDay(), done = S.wods.filter(x => dayKey(x.t) === dayKey()), w = d.wodRun ? WOD_BY[d.wodRun.id] : done.length && !d.wodMore ? WOD_BY[done[done.length - 1].id] : wodChoice();
+  if (!w) return null;
+  const finished = !d.wodRun && done.some(x => x.id === w.id);
+  const list = w.fmt === "emom" ? w.odd.concat(w.even) : w.moves;
+  return { title: `WOD · ${w.name}`, started: !!d.wodRun, done: finished,
+    items: (finished ? [{ n: fmtShort(w), t: wodScore(w, done.filter(x => x.id === w.id).pop().res), s: 2 }] : [{ n: fmtShort(w), t: `~${wodMinutes(w)} min`, s: 0 }])
+      .concat(list.map(m => ({ n: moveName(m), t: m[1] ? moveQty(m) : w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : "", s: finished ? 2 : 0 }))) };
+}
+
 // ---------- rounds: today's workouts, one after another, as many as you want ----------
 // Round 1 is planned from how you were before today. A round starts when its first set or activity is logged and is
 // then kept in S.daily[day].rounds = [{ kind, ex, run, acts, back, t0 }]: sets count toward the round they were logged
@@ -825,9 +1033,9 @@ function widgetRounds() {
 }
 
 // ---------- home-screen widget (Scriptable) ----------
-// A web app can't update an iPhone widget, so Unbowed hands a small summary to a Scriptable script named "Unbowed"
-// (scriptable:///run/Unbowed?data=...), which saves it; the widget shows it. widget/unbowed-widget.js is that script.
-const WIDGET_SCRIPT = "Unbowed";
+// A web app can't update an iPhone widget, so Unbothered hands a small summary to a Scriptable script named "Unbothered"
+// (scriptable:///run/Unbothered?data=...), which saves it; the widget shows it. widget/unbothered-widget.js is that script.
+const WIDGET_SCRIPT = "Unbothered";
 function widgetPayload() {
   const info = streakInfo(), today = dayKey(), r = rankOf(info.n), done = info.status[today] === "on";
   const tmrw = addDays(today, 1);
@@ -837,12 +1045,13 @@ function widgetPayload() {
   const rowsOf = p => !p ? null : p.kind === "plan" ? p.plan.map(exRow).concat(p.run ? [runRow(p.run)] : [], (p.acts || []).filter(a => !isRun(a)).map(actRow))
     : p.kind === "groove" ? p.G.map(g => ({ n: EX[g.x].short || EX[g.x].name, t: `3 × ${S.settings.gtg[g.x]} easy groove`, s: g.n >= 3 ? 2 : g.n ? 1 : 0, p: g.n ? `${Math.min(g.n, 3)}/3` : "" }))
     : p.kind === "act" ? (p.acts || []).map(actRow) : [{ n: "Easy walk", t: "20–30 min", s: 0 }];
-  const w = widgetRounds(), items = rowsOf(w.now), next = rowsOf(w.after);
+  const w = widgetRounds(), items = rowsOf(w.now), next = rowsOf(w.after), wd = wodWidget();
   const rec = recovery(), ready = Math.round(Object.keys(MUSCLES).reduce((t, m) => t + rec[m], 0) / Object.keys(MUSCLES).length);
   return { v: 1, d: today, at: Date.now(), n: info.n, best: info.best, rank: r.name, ready, img: widgetFigure(),
     next: r.next && info.n ? { name: r.next[1], in: r.next[0] - info.n - (done ? 0 : 1) } : null,
     done, restOk: info.restOk, restTmrw: done && info.n > 0 && (!info.lastRest || addDays(info.lastRest, 7) <= tmrw),
-    first: { title: roundName(w.i), started: w.started, done: false, rest: w.i === 0 && w.now.kind === "plan" && !w.now.plan.length && !w.now.run, items }, second: next,
+    first: wd ? { title: wd.title, started: wd.started, done: wd.done, rest: false, items: wd.items } : { title: roundName(w.i), started: w.started, done: false, rest: w.i === 0 && w.now.kind === "plan" && !w.now.plan.length && !w.now.run, items },
+    second: wd ? null : next,
     rounds: w.started ? w.i : w.i };
 }
 // the figure as the app shows it (muscles lit by how recently they were trained), on the widget's dark background
@@ -863,8 +1072,8 @@ function sendToWidget() {
 }
 // copy the widget script (Safari wants the copy to start inside the tap, so the fetch goes into a ClipboardItem)
 function copyWidgetScript() {
-  const get = () => fetch("widget/unbowed-widget.js", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(); return r.text(); });
-  const ok = () => { S.settings.widgetOn = true; save(); render(); toast("Widget script copied. Paste it into a new Scriptable script named Unbowed."); };
+  const get = () => fetch("widget/unbothered-widget.js", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(); return r.text(); });
+  const ok = () => { S.settings.widgetOn = true; save(); render(); toast("Widget script copied. Paste it into a new Scriptable script named Unbothered."); };
   const fail = () => toast("Couldn't copy here. Open the script link below, select all and copy.", true);
   try {
     if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)
@@ -876,28 +1085,28 @@ function widgetSection() {
   const on = S.settings.widgetOn, sent = S.settings.widgetSent;
   if (on && sent) return `<h3>Home-screen widget</h3><div class="card wsetup"><div class="inrow"><span>Last sent ${agoMin(sent)}</span><button class="small-btn primary" data-act="widget-send">Send now</button></div>
     ${fold("widget", "Set up again", "Copy the script, steps", `<button class="big" data-act="widget-copy">Copy widget script</button>
-      <p class="muted fnote">In Scriptable: open the <b>Unbowed</b> script, select all, paste. Then tap Send now. Script: <a href="widget/unbowed-widget.js" target="_blank">widget/unbowed-widget.js</a></p>`)}</div>`;
+      <p class="muted fnote">In Scriptable: open the <b>Unbothered</b> script, select all, paste. Then tap Send now. Script: <a href="widget/unbothered-widget.js" target="_blank">widget/unbothered-widget.js</a></p>`)}</div>`;
   return `<h3>Home-screen widget</h3><div class="card wsetup">
     <p>Your streak and today's workout on your home screen, through the free <b>Scriptable</b> app.</p>
     <ol>
       <li>Install <b>Scriptable</b> from the App Store.</li>
       <li>Tap <b>Copy widget script</b> below.</li>
-      <li>In Scriptable, tap <b>+</b>, paste, and name the script <b>Unbowed</b> (tap the title at the top).</li>
+      <li>In Scriptable, tap <b>+</b>, paste, and name the script <b>Unbothered</b> (tap the title at the top).</li>
       <li>Here, tap <b>Send to widget</b>. Scriptable opens and shows the widget.</li>
-      <li>Long-press your home screen → <b>+</b> → Scriptable → pick a size → long-press the widget → <b>Edit Widget</b> → Script: <b>Unbowed</b>.</li>
+      <li>Long-press your home screen → <b>+</b> → Scriptable → pick a size → long-press the widget → <b>Edit Widget</b> → Script: <b>Unbothered</b>.</li>
     </ol>
     <button class="big" data-act="widget-copy">Copy widget script</button>
     <button class="big ${on ? "primary" : ""}" data-act="widget-send">Send to widget</button>
     <p class="muted rhelp">The widget updates when you tap <b>⇪ Widget</b> on the Train screen (after training, or in the morning for the day's plan). ${sent ? `Last sent ${agoMin(sent)}.` : ""}
-      Script: <a href="widget/unbowed-widget.js" target="_blank">widget/unbowed-widget.js</a></p></div>`;
+      Script: <a href="widget/unbothered-widget.js" target="_blank">widget/unbothered-widget.js</a></p></div>`;
 }
 const agoMin = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 // the path: the last 7 days (height = how much you did) and the next 3 if you keep going
 function pathCard() {
   const info = streakInfo(), n = info.n, r = rankOf(n), today = dayKey(), st = info.status;
-  const lift = new Set(S.sets.map(s => dayKey(s.t))), ran = new Set(S.runs.map(x => dayKey(x.t)));
+  const lift = new Set(S.sets.map(s => dayKey(s.t)).concat(S.wods.map(x => dayKey(x.t)))), ran = new Set(S.runs.map(x => dayKey(x.t)));
   const past = [6, 5, 4, 3, 2, 1, 0].map(i => addDays(today, -i));
-  const load = k => S.sets.reduce((t, s) => t + (dayKey(s.t) === k ? (s.gtg ? .4 : 1) : 0), 0) + S.runs.reduce((t, x) => t + (dayKey(x.t) === k ? (effortOf(x) || x.dur / 30) / 20 : 0), 0);
+  const load = k => S.sets.reduce((t, s) => t + (dayKey(s.t) === k ? (s.gtg ? .4 : 1) : 0), 0) + S.runs.reduce((t, x) => t + (dayKey(x.t) === k ? (effortOf(x) || x.dur / 30) / 20 : 0), 0) + S.wods.reduce((t, x) => t + (dayKey(x.t) === k ? Object.values(x.load).reduce((a, b) => a + b, 0) / 2 : 0), 0);
   const L = past.map(load), mx = Math.max(1, ...L), doneToday = st[today] === "on";
   let nn = n + (doneToday ? 0 : 1), restShown = false;
   const fut = [1, 2, 3].map(i => {
@@ -999,7 +1208,7 @@ function aheadRow(info) {
 }
 // Progress: the last five weeks, Monday first. Filled = lifted, blue = ran, both = ring; dashed = the free rest day
 function calendarCard() {
-  const info = streakInfo(), today = dayKey(), lift = new Set(S.sets.map(s => dayKey(s.t))), ran = new Set(S.runs.map(r => dayKey(r.t)));
+  const info = streakInfo(), today = dayKey(), lift = new Set(S.sets.map(s => dayKey(s.t)).concat(S.wods.map(x => dayKey(x.t)))), ran = new Set(S.runs.map(r => dayKey(r.t)));
   const start = addDays(weekStart(today), -28), end = addDays(weekStart(today), 6), cells = [];
   let nLift = 0, nRun = 0, nRest = 0;
   for (let k = start; k <= end; k = addDays(k, 1)) {
@@ -1102,6 +1311,7 @@ function recoveryRaw(skipFrom = Infinity, skip = null) {   // leave out what was
   const add = (x, t, ms, l) => { const h = (now - t) / 36e5; if (h < 0 || h > 240 || t >= skipFrom || (skip && skip(x))) return; for (const m of ms) F[m] += l * Math.exp(-h / REC_TAU); };
   for (const s of S.sets) add(s, s.t, musclesOf(s), setLoad(s));
   for (const r of S.runs) add(r, r.t + r.dur * 1000, RUN_MUSCLES[r.sport] || RUN_MUSCLES.run, runLoad(r));
+  for (const x of S.wods) for (const m in x.load) add(x, x.t, [m], x.load[m]);
   const out = {}; for (const m in MUSCLES) out[m] = Math.round(100 * Math.max(0, 1 - F[m] / REC_FULL));
   return out;
 }
@@ -1110,6 +1320,7 @@ function muscleStateRaw() {
   const last = {}, by = {}, today = dayKey();
   for (const s of S.sets) { const k = dayKey(s.t); for (const m of musclesOf(s)) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = EX[s.ex].name.toLowerCase(); } }
   for (const r of S.runs) { const k = dayKey(r.t); for (const m of RUN_MUSCLES[r.sport] || RUN_MUSCLES.run) if (!last[m] || k >= last[m]) { last[m] = k; by[m] = KIND[r.sport] || "run"; } }
+  for (const x of S.wods) { const k = dayKey(x.t); for (const m in x.load) if (x.load[m] >= .3 && (!last[m] || k >= last[m])) { last[m] = k; by[m] = "WOD"; } }
   const st = {}, rec = recovery();
   for (const m in MUSCLES) {
     const d = last[m] ? Math.round((keyToDate(today) - keyToDate(last[m])) / 864e5) : null;
@@ -1263,7 +1474,7 @@ function progressView() {
     `<button role="tab" aria-selected="${k === pt}" data-ptab="${k}" class="${k === pt ? "on" : ""}">${n}</button>`).join("")}</div>`;
   if (pt === "body") return `<h1>Progress</h1>${seg}${bodyMap()}${calendarCard()}${bodyWeightCard()}`;
   if (pt === "cardio") return `<h1>Progress</h1>${seg}${runsProgress() || `<div class="card muted">No runs, swims or games yet. Add one from the Train screen.</div>`}`;
-  return `<h1>Progress</h1>${seg}<div class="chips">${chips}</div>${stats}
+  return `<h1>Progress</h1>${seg}${wodHistory()}<div class="chips">${chips}</div>${stats}
     <h3>${bestTitle}</h3><div class="card">${lineChart(pts, { label: "best set" })}</div>
     ${e1Chart}
     <h3>Total reps per week</h3><div class="card">${barChart(weeks)}</div>
@@ -1333,7 +1544,7 @@ function moreView() {
       <div class="btn2"><button class="big" data-act="export">Export</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden>
       <p class="muted fnote">Your data lives only on this phone. Export now and then and keep the file in iCloud Drive or Files.</p></div>
     ${fold("about", "About the quotes", `${QUOTES.length} quotes and where they come from`, `<p class="muted fnote">${about}</p>`)}
-    <p class="muted ver">Unbowed · formerly Stoic Reps</p>`;
+    <p class="muted ver">Unbothered · formerly Unbothered and Stoic Reps</p>`;
 }
 
 // ---------- events ----------
@@ -1353,6 +1564,14 @@ document.addEventListener("click", e => {
   if (d.act === "widget-send") { S.settings.widgetOn = true; sendToWidget(); return; }
   if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "next-open") { nextOpen = true; render(); return; }
+  if (d.act === "wod-start") { wodStart(); return; }
+  if (d.act === "wod-another") { const x = wodDay(); x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
+  if (d.act === "wod-more") { const x = wodDay(); x.wodMore = true; x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
+  if (d.act === "wod-log") { wodFinish(true); return; }
+  if (d.act === "wod-finish") { wodFinish(); return; }
+  if (d.act === "wod-save") { wodSave(); return; }
+  if (d.act === "wod-round") { const r = wodDay().wodRun; if (r) { r.rounds = (r.rounds || 0) + 1; save(); const e = $("#wrounds"); if (e) e.textContent = r.rounds; beep(1, 770); } return; }
+  if (d.act === "wod-cancel") { if (!wodCancelArm) { wodCancelArm = true; render(); return; } const x = wodDay(); delete x.wodRun; wodCancelArm = false; clearInterval(wodT); keepAwake(false); save(); render(); toast("Workout cancelled"); return; }
   if (d.act === "favs-all") { allFavs = !allFavs; render(); return; }
   if (d.act === "bw-trend") { S.settings.progTab = "body"; save(); tab = "progress"; render(); window.scrollTo(0, document.body.scrollHeight); return; }
   if (d.goday) { logDay = d.goday === dayKey() ? null : d.goday; tab = "home"; render(); const c = document.querySelector(".runcard"); if (c) c.scrollIntoView({ block: "center" }); return; }
@@ -1407,7 +1626,7 @@ document.addEventListener("click", e => {
   }
   if (d.act === "export") {
     const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `unbowed-${dayKey()}.json`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `unbothered-${dayKey()}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000); return;
   }
   if (d.act === "import") { $("#imp").click(); return; }
@@ -1418,7 +1637,7 @@ document.addEventListener("change", e => {
   if (t.id === "imp" && t.files[0]) {
     t.files[0].text().then(txt => {
       const j = JSON.parse(txt);
-      if (!j || !Array.isArray(j.sets) || !j.settings) throw new Error("not an Unbowed (Stoic Reps) backup");
+      if (!j || !Array.isArray(j.sets) || !j.settings) throw new Error("not an Unbothered (Stoic Reps) backup");
       S = fillIn(Object.assign(defaults(), j)); save(); toast(`Imported ${S.sets.length} sets`); render();
     }).catch(err => toast("Import failed: " + err.message, true));
     return;
@@ -1443,6 +1662,8 @@ document.addEventListener("change", e => {
 $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeSheet(); });
 
 render();
+wodTicking();
+document.addEventListener("visibilitychange", () => { if (!document.hidden && wodDay().wodRun) { keepAwake(true); wodTick(); } });
 // accessibility: tell screen readers which tab is current and which toggles are on; Escape closes an open sheet
 let a11yQueued = false;
 function syncA11y() {

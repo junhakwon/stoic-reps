@@ -549,3 +549,28 @@ h3.sec { margin: 20px 2px 8px; }
 .rdone .plck { background: var(--good); border-color: var(--good); color: #fff; font-size: 14px; }
 .rdone b { white-space: nowrap; }
 .rdone span:last-child { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ===== WOD of the day ===== */
+.wod { padding: 14px; }
+.wname { margin: 8px 0 2px; font-size: 24px; letter-spacing: -.01em; }
+.wfmt { margin: 0 0 10px; font-size: 14px; color: var(--accent); font-weight: 600; text-wrap: pretty; }
+.wmoves { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.wmoves li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.wmoves li:last-child { border-bottom: 0; }
+.wmoves b { font-size: 17px; font-variant-numeric: tabular-nums; text-align: right; }
+.wmoves span { font-size: 15px; font-weight: 600; }
+.wsw { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.wgrp { margin: 6px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.wnote { font-size: 13px; margin: 0 0 8px; }
+.wwhy { font-size: 13px; margin: 0 0 10px; }
+.wwhy .tired { color: var(--warn); }
+.wwarn { font-size: 13px; margin: 0 0 10px; color: var(--warn); }
+.wbtns { display: flex; gap: 8px; margin-top: 8px; }
+.wbtns .small-btn { flex: 1; min-height: 44px; }
+.wmore { margin-top: 10px; }
+.wrun .wclock { font-size: 64px; font-weight: 800; text-align: center; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; margin: 10px 0 2px; }
+.wrun .wnow { text-align: center; margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--accent); min-height: 1.4em; }
+.wcount { width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 8px; min-height: 56px; border-radius: 16px; background: var(--card2); margin-bottom: 12px; }
+.wcount b { font-size: 28px; font-variant-numeric: tabular-nums; }
+.wcount span { font-size: 13px; color: var(--muted); }
+.wcancel { display: block; margin: 12px auto 0; min-height: 44px; }
