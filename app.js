@@ -560,7 +560,7 @@ function runsProgress() {
 
 // ---------- screens ----------
 let tab = "home", progEx = "pullup";
-const LOOKS = { gotham: { name: "Gotham", theme: "dark", color: "#0a0b0f" }, marble: { name: "Marble", theme: "light", color: "#ece6da" }, classic: { name: "Classic", theme: null, color: "#111214" } };
+const LOOKS = { gotham: { name: "Gotham", theme: "dark", color: "#0b0822" }, marble: { name: "Marble", theme: "light", color: "#ece6da" }, classic: { name: "Classic", theme: null, color: "#111214" } };
 function render() {
   memoBox.clear();
   // the look (Gotham, Marble or Classic) sets the whole visual style; Classic keeps its own dark/light switch

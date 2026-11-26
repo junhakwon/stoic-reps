@@ -8,94 +8,117 @@
 @font-face { font-family: "Cormorant Garamond"; src: url(fonts/cormorant-500-italic.woff2) format("woff2"); font-weight: 500; font-style: italic; font-display: swap; }
 
 /* =====================================================================================================
-   GOTHAM: night city, comic-panel noir. Near-black with a halftone screen, crimson + steel, tall condensed
-   capitals, hard edges with cut corners.
+   GOTHAM: a neon night city in comic print. Deep indigo, hot magenta and cyan, colour-split (misregistered)
+   edges, halftone dots, an original neon skyline behind the header, yellow comic caption boxes for quotes.
    ===================================================================================================== */
 [data-look="gotham"] {
-  --bg: #0a0b0f; --card: #14151b; --card2: #1e2028; --text: #f3f1ec; --muted: #9298a6;
-  --accent: #ff3b36; --accent-ink: #ffffff; --good: #2fd38c; --warn: #ffb03a; --line: #2b2e38;
-  --steel: #4c90ff; --rec-mid: #ffb03a; --rec-low: #ff3b36; --display: "Bebas Neue", "Arial Narrow", Impact, sans-serif; --label: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
-  --cut-s: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%);
+  --bg: #0b0822; --card: #151338; --card2: #201d4d; --text: #f5f3ff; --muted: #aaa6d6;
+  --accent: #ff2d7a; --accent-ink: #ffffff; --good: #3dffb5; --warn: #ffd84d; --line: #2f2a6b;
+  --steel: #27e1ff; --cyan: #27e1ff; --violet: #8b5cff; --rec-mid: #ffd84d; --rec-low: #ff2d7a;
+  --display: "Bebas Neue", "Arial Narrow", Impact, sans-serif; --label: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --split: -2px 0 0 rgba(39, 225, 255, .75), 2px 0 0 rgba(255, 45, 122, .75);          /* colour-split text */
+  --rim: -1.5px 0 0 rgba(39, 225, 255, .55), 1.5px 0 0 rgba(255, 45, 122, .55);       /* colour-split panel edges */
   --slant: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  --cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
 }
-[data-look="gotham"] body {
-  background:
-    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(255, 59, 54, .16), transparent 60%),
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .055) 1px, transparent 1.4px) 0 0 / 5px 5px,
-    linear-gradient(#101118, #07080b 60%) fixed;
-  background-color: var(--bg);
-}
-/* display type */
-[data-look="gotham"] h1, [data-look="gotham"] .hdr h1 { font: 400 34px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
-[data-look="gotham"] .hdr h1 { font-size: 38px; text-shadow: 3px 3px 0 rgba(255, 59, 54, .55); }
-[data-look="gotham"] h2 { font: 400 28px/1 var(--display); letter-spacing: .04em; }
-[data-look="gotham"] h3, [data-look="gotham"] .qhead { font: 400 22px/1 var(--display); letter-spacing: .06em; color: var(--text); display: flex; align-items: center; gap: 8px; }
-[data-look="gotham"] h3::before { content: ""; width: 14px; height: 5px; background: var(--accent); transform: skewX(-30deg); flex: none; }
+/* the city: skyline behind the header, neon haze, and halftone dots that thicken toward the edges */
+[data-look="gotham"] body { background: var(--bg); position: relative; isolation: isolate; }
+[data-look="gotham"] body::before { content: ""; position: absolute; z-index: -2; left: 0; right: 0; top: 0; height: 430px;
+  background: url(img/city.svg) center bottom / cover no-repeat;
+  -webkit-mask: linear-gradient(#000 45%, transparent); mask: linear-gradient(#000 45%, transparent); opacity: .9; }
+[data-look="gotham"] body::after { content: ""; position: fixed; z-index: -1; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 1.2px 1.2px, rgba(170, 150, 255, .16) 1.1px, transparent 1.7px) 0 0 / 6px 6px,
+    radial-gradient(ellipse 80% 45% at 85% 100%, rgba(39, 225, 255, .14), transparent 70%),
+    radial-gradient(ellipse 70% 40% at 0% 70%, rgba(255, 45, 122, .14), transparent 70%);
+  -webkit-mask: radial-gradient(ellipse 75% 65% at 50% 45%, transparent 35%, #000); mask: radial-gradient(ellipse 75% 65% at 50% 45%, transparent 35%, #000); }
+/* display type with the colour split */
+[data-look="gotham"] h1, [data-look="gotham"] .hdr h1 { font: 400 36px/1 var(--display); letter-spacing: .05em; text-transform: uppercase; text-shadow: var(--split); }
+[data-look="gotham"] .hdr h1 { font-size: 42px; animation: gl-split 5s steps(1) infinite; }
+@keyframes gl-split { 0%, 92%, 100% { text-shadow: var(--split); transform: none; clip-path: none; }
+  93% { text-shadow: -5px 0 0 rgba(39, 225, 255, .9), 5px 0 0 rgba(255, 45, 122, .9); transform: translateX(2px); clip-path: inset(0 0 45% 0); }
+  95% { text-shadow: 4px 0 0 rgba(39, 225, 255, .9), -4px 0 0 rgba(255, 45, 122, .9); transform: translateX(-3px); clip-path: inset(40% 0 0 0); }
+  97% { text-shadow: var(--split); transform: none; clip-path: none; } }
+[data-look="gotham"] h2 { font: 400 28px/1 var(--display); letter-spacing: .05em; }
+[data-look="gotham"] h3, [data-look="gotham"] .qhead { font: 400 22px/1 var(--display); letter-spacing: .07em; color: var(--text); display: flex; align-items: center; gap: 9px; }
+[data-look="gotham"] h3::before { content: ""; width: 16px; height: 6px; flex: none; transform: skewX(-30deg);
+  background: linear-gradient(90deg, var(--cyan), var(--accent)); }
 [data-look="gotham"] .gauge b, [data-look="gotham"] .phead b, [data-look="gotham"] .stat b, [data-look="gotham"] .rstats b,
 [data-look="gotham"] .stepper output, [data-look="gotham"] .qst b, [data-look="gotham"] .rest b { font-family: var(--display); font-weight: 400; letter-spacing: .03em; }
-[data-look="gotham"] .gauge b { font-size: 46px; }
-[data-look="gotham"] .stepper output { font-size: 64px; }
+[data-look="gotham"] .gauge b { font-size: 48px; text-shadow: var(--split); }
+[data-look="gotham"] .stepper output { font-size: 68px; text-shadow: var(--split); }
 [data-look="gotham"] .stat b { font-size: 34px; }
 [data-look="gotham"] .rstats b { font-size: 26px; }
-[data-look="gotham"] .phead b { font-size: 26px; }
+[data-look="gotham"] .phead b { font-size: 28px; text-shadow: var(--split); }
 [data-look="gotham"] .plhead b, [data-look="gotham"] .tile .th b, [data-look="gotham"] .plt b, [data-look="gotham"] .runcard .rhead b,
-[data-look="gotham"] .fold > summary b, [data-look="gotham"] .sheet-head h2 { font: 400 23px/1.05 var(--display); letter-spacing: .04em; }
-[data-look="gotham"] .plt b { font-size: 21px; }
-[data-look="gotham"] .tile .th b { font-size: 21px; }
+[data-look="gotham"] .fold > summary b, [data-look="gotham"] .sheet-head h2 { font: 400 23px/1.05 var(--display); letter-spacing: .05em; }
+[data-look="gotham"] .plt b, [data-look="gotham"] .tile .th b { font-size: 21px; }
 [data-look="gotham"] .big, [data-look="gotham"] .qadd, [data-look="gotham"] .tabs button, [data-look="gotham"] .seg button, [data-look="gotham"] .qseg button,
 [data-look="gotham"] .chips button, [data-look="gotham"] .small-btn, [data-look="gotham"] .tick, [data-look="gotham"] .dayctl span,
 [data-look="gotham"] .gauge span, [data-look="gotham"] .rbars, [data-look="gotham"] .plabels, [data-look="gotham"] .qtype button, [data-look="gotham"] .field label {
-  font-family: var(--label); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-[data-look="gotham"] .big, [data-look="gotham"] .qadd { font-size: 20px; }
+  font-family: var(--label); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; }
+[data-look="gotham"] .big, [data-look="gotham"] .qadd { font-size: 21px; }
 [data-look="gotham"] .tabs button { font-size: 13px; }
-/* panels: hard edges, a cut corner, a hairline frame */
-[data-look="gotham"] .card, [data-look="gotham"] .tile, [data-look="gotham"] .stat, [data-look="gotham"] .sheet-card {
-  border-radius: 0; clip-path: var(--cut); background: linear-gradient(160deg, #191a21, var(--card) 55%); box-shadow: inset 0 0 0 1px var(--line); }
-[data-look="gotham"] .sheet-card { clip-path: none; border-top: 3px solid var(--accent); }
-[data-look="gotham"] .stat { background: var(--card2); clip-path: var(--cut-s); }
-[data-look="gotham"] .ready { box-shadow: inset 0 0 0 1px var(--line), inset 0 -60px 80px -40px rgba(255, 59, 54, .18); }
-[data-look="gotham"] .plan:not(.plnext) { box-shadow: inset 0 0 0 1px var(--line), inset 4px 0 0 var(--accent); }
-[data-look="gotham"] .plan.plnext { box-shadow: inset 0 0 0 1px var(--steel); border: 0; }
+/* panels: deep glass with colour-split edges and a cut corner */
+[data-look="gotham"] .card, [data-look="gotham"] .tile, [data-look="gotham"] .stat {
+  border-radius: 0; clip-path: var(--cut); background: linear-gradient(165deg, rgba(37, 33, 92, .92), rgba(21, 19, 56, .94) 60%);
+  box-shadow: inset 0 0 0 1px rgba(120, 110, 255, .28), inset var(--rim); }
+[data-look="gotham"] .stat { background: rgba(32, 29, 77, .9); }
+[data-look="gotham"] .ready { background: linear-gradient(170deg, rgba(42, 19, 102, .55), rgba(21, 19, 56, .92) 55%);
+  box-shadow: inset 0 0 0 1px rgba(120, 110, 255, .3), inset 0 -70px 90px -50px rgba(255, 45, 122, .35), inset var(--rim); }
+[data-look="gotham"] .plan:not(.plnext) { box-shadow: inset 0 0 0 1px rgba(120, 110, 255, .28), inset 4px 0 0 var(--accent), inset 7px 0 0 rgba(39, 225, 255, .6); }
+[data-look="gotham"] .plan.plnext { border: 0; box-shadow: inset 0 0 0 1.5px var(--cyan), inset 0 0 24px -8px rgba(39, 225, 255, .55); }
+[data-look="gotham"] .sheet-card { border-radius: 0; clip-path: none; background: linear-gradient(180deg, #1b1846, #110f2e 40%);
+  box-shadow: 0 -2px 0 var(--accent), 0 -4px 0 rgba(39, 225, 255, .7); }
 [data-look="gotham"] .plrow, [data-look="gotham"] .tick, [data-look="gotham"] .lastrow, [data-look="gotham"] .qst, [data-look="gotham"] .qseg,
 [data-look="gotham"] .qtype, [data-look="gotham"] .dayctl, [data-look="gotham"] .today-sets button, [data-look="gotham"] .ah, [data-look="gotham"] .cd,
-[data-look="gotham"] input[type=number], [data-look="gotham"] select, [data-look="gotham"] .xbtn { border-radius: 0; }
-[data-look="gotham"] .plrow { clip-path: var(--cut-s); background: var(--card2); }
-[data-look="gotham"] .plck, [data-look="gotham"] .tile .tp, [data-look="gotham"] .tick .box { border-radius: 0; }
-[data-look="gotham"] .plrow.done .plck, [data-look="gotham"] .tile.tdone .tp { background: var(--accent); border-color: var(--accent); }
-/* buttons: slanted slabs */
+[data-look="gotham"] input[type=number], [data-look="gotham"] select, [data-look="gotham"] .xbtn, [data-look="gotham"] .plck, [data-look="gotham"] .tile .tp,
+[data-look="gotham"] .tick .box { border-radius: 0; }
+[data-look="gotham"] .plrow { background: rgba(32, 29, 77, .85); clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%); }
+[data-look="gotham"] .plrow.done .plck, [data-look="gotham"] .tile.tdone .tp { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: -2px 2px 0 var(--cyan); }
+[data-look="gotham"] .dayctl { background: rgba(21, 19, 56, .85); box-shadow: inset 0 0 0 1px rgba(120, 110, 255, .3); }
+/* buttons: magenta slabs printed slightly off-register (a cyan copy peeks out behind) */
 [data-look="gotham"] .big, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn, [data-look="gotham"] .chips button, [data-look="gotham"] .seg button,
 [data-look="gotham"] .stepper button, [data-look="gotham"] .x { border-radius: 0; clip-path: var(--slant); }
 [data-look="gotham"] .big.primary, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn.primary {
-  background: linear-gradient(180deg, #e6332d, #c4221d); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
-[data-look="gotham"] .seg button.on, [data-look="gotham"] .qseg button.on, [data-look="gotham"] .chips button.on { background: var(--accent); color: #fff; }
-/* the tab bar: black with a red rule; the active tab gets a red slash above it */
-[data-look="gotham"] .tabs { background: #050608; border-top: 2px solid var(--accent); }
-[data-look="gotham"] .tabs button { position: relative; color: #6f7582; }
-[data-look="gotham"] .tabs button.on { color: #fff; }
-[data-look="gotham"] .tabs button.on::before { content: ""; position: absolute; top: -2px; left: 30%; right: 30%; height: 4px; background: #fff; transform: skewX(-30deg); }
-[data-look="gotham"] .tabs button.on svg { stroke: var(--accent); }
-/* quote: a comic caption box */
-[data-look="gotham"] .quote { background: #f3eedf; color: #15161b; box-shadow: 4px 4px 0 var(--accent); clip-path: none; border-radius: 0; margin-right: 4px; }
-[data-look="gotham"] .quote blockquote { font: 600 21px/1.2 var(--label); text-transform: none; letter-spacing: .01em; }
-[data-look="gotham"] .quote cite { color: #55565e; font-family: var(--label); text-transform: uppercase; letter-spacing: .06em; font-size: 13px; }
+  clip-path: none; position: relative; isolation: isolate; color: #fff; text-shadow: 1px 1px 0 rgba(60, 0, 40, .5);
+  background: linear-gradient(100deg, #e8126a, #ff2d7a 55%, #ff5a8f); transform: skewX(-8deg); box-shadow: -4px 4px 0 var(--cyan), 0 6px 20px -6px rgba(255, 45, 122, .7); }
+[data-look="gotham"] .big.primary:active:not(:disabled), [data-look="gotham"] .qadd:active:not(:disabled) { transform: skewX(-8deg) translate(-2px, 2px); box-shadow: -2px 2px 0 var(--cyan); }
+[data-look="gotham"] .stepper button, [data-look="gotham"] .seg button, [data-look="gotham"] .chips button, [data-look="gotham"] .small-btn:not(.primary), [data-look="gotham"] .big:not(.primary) {
+  background: rgba(32, 29, 77, .9); }
+[data-look="gotham"] .seg button.on, [data-look="gotham"] .qseg button.on, [data-look="gotham"] .chips button.on { background: var(--accent); color: #fff; box-shadow: inset -3px 0 0 var(--cyan); }
+/* the tab bar: a neon strip */
+[data-look="gotham"] .tabs { background: rgba(8, 6, 28, .94); border-top: 0; box-shadow: 0 -2px 0 var(--accent), 0 -4px 0 rgba(39, 225, 255, .75); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+[data-look="gotham"] .tabs button { position: relative; color: #7f7bb0; }
+[data-look="gotham"] .tabs button.on { color: #fff; text-shadow: var(--split); }
+[data-look="gotham"] .tabs button.on::before { content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 4px; background: var(--cyan); transform: skewX(-30deg); box-shadow: 3px 0 0 var(--accent); }
+[data-look="gotham"] .tabs button.on svg { stroke: var(--accent); filter: drop-shadow(-1.5px 0 0 rgba(39, 225, 255, .8)); }
+/* the quote: a yellow comic narration caption, printed off-register */
+[data-look="gotham"] .quote { background: #ffe94d; color: #1a1033; clip-path: none; border-radius: 0; margin-right: 6px;
+  box-shadow: 5px 5px 0 var(--accent), 2px 2px 0 var(--cyan), inset 0 0 0 2px #1a1033; transform: rotate(-.6deg); }
+[data-look="gotham"] .quote blockquote { font: 600 21px/1.2 var(--label); letter-spacing: .01em; }
+[data-look="gotham"] .quote cite { color: #4a3d6b; font-family: var(--label); text-transform: uppercase; letter-spacing: .07em; font-size: 13px; }
 [data-look="gotham"] .quote cite i { font-style: normal; }
-[data-look="gotham"] .quote .fav { color: #8c8a84; }
-[data-look="gotham"] .quote .fav.on { color: var(--accent); }
-/* runs and the calendar get the steel blue */
-[data-look="gotham"] .cd.run, [data-look="gotham"] .path .pd.run, [data-look="gotham"] .cleg i.run, [data-look="gotham"] .act > i.sp-run { background: var(--steel); fill: var(--steel); }
-[data-look="gotham"] .cd.both { box-shadow: inset 0 0 0 3px var(--steel); }
-[data-look="gotham"] .cd.lift, [data-look="gotham"] .cd.both { color: #fff; background: #9e1f1c; }
-[data-look="gotham"] .cleg i.lift, [data-look="gotham"] .cleg i.both { background: #9e1f1c; }
-[data-look="gotham"] .next { font: 400 34px/1 var(--display); letter-spacing: .03em; }
-[data-look="gotham"] .next .setn { font: 600 16px var(--label); text-transform: uppercase; letter-spacing: .06em; }
-[data-look="gotham"] .gauge .gv { stroke-linecap: butt; }
-[data-look="gotham"] .gauge .gt { stroke: #262833; }
-[data-look="gotham"] .rest { border-radius: 0; clip-path: var(--slant); padding-left: 22px; }
-[data-look="gotham"] .toast { border-radius: 0; background: #f3eedf; color: #15161b; box-shadow: 4px 4px 0 var(--accent); }
-[data-look="gotham"] .fold > summary small { font-family: inherit; }
-[data-look="gotham"] .ptabs { border-radius: 0; background: #0f1015; box-shadow: inset 0 0 0 1px var(--line); }
-[data-look="gotham"] .link { color: #ff6a64; }
+[data-look="gotham"] .quote .fav { color: #6b5d8f; }
+[data-look="gotham"] .quote .fav.on { color: #e8126a; }
+/* runs, calendar, gauge, path */
+[data-look="gotham"] .cd.run, [data-look="gotham"] .path .pd.run, [data-look="gotham"] .cleg i.run, [data-look="gotham"] .act > i.sp-run { background: var(--cyan); fill: var(--cyan); color: #0b0822; }
+[data-look="gotham"] .cd.lift, [data-look="gotham"] .cd.both, [data-look="gotham"] .cleg i.lift, [data-look="gotham"] .cleg i.both { background: #b3135a; color: #fff; }
+[data-look="gotham"] .cd.both, [data-look="gotham"] .cleg i.both { box-shadow: inset 0 0 0 3px var(--cyan); }
+[data-look="gotham"] .cd { background: rgba(32, 29, 77, .7); }
+[data-look="gotham"] .gauge .gv { stroke-linecap: butt; filter: drop-shadow(-2px 0 0 rgba(39, 225, 255, .8)); }
+[data-look="gotham"] .gauge .gt { stroke: rgba(120, 110, 255, .22); }
+[data-look="gotham"] .path .pl { filter: drop-shadow(-1.5px 0 0 rgba(39, 225, 255, .7)); }
+[data-look="gotham"] .rbars > div > i, [data-look="gotham"] .tile .tb, [data-look="gotham"] .goal .bar { background: rgba(120, 110, 255, .2); border-radius: 0; }
+[data-look="gotham"] .rest { border-radius: 0; clip-path: var(--slant); padding-left: 22px; box-shadow: -3px 3px 0 var(--cyan); }
+[data-look="gotham"] .toast { border-radius: 0; background: #ffe94d; color: #1a1033; box-shadow: 4px 4px 0 var(--accent), 2px 2px 0 var(--cyan); }
+[data-look="gotham"] .ptabs { border-radius: 0; background: rgba(15, 12, 44, .92); box-shadow: inset 0 0 0 1px rgba(120, 110, 255, .3); }
+[data-look="gotham"] .link { color: #ff6fa6; }
+[data-look="gotham"] .next { font: 400 34px/1 var(--display); letter-spacing: .03em; text-shadow: var(--split); color: #ff4d8e; }
+[data-look="gotham"] .next .setn { font: 600 16px var(--label); text-transform: uppercase; letter-spacing: .06em; text-shadow: none; }
+[data-look="gotham"] .plhead .muted { white-space: nowrap; }
+[data-look="gotham"] .pln, [data-look="gotham"] .tile .tn { color: #ff6fa6; }
+[data-look="gotham"] .sheet { background: rgba(8, 4, 30, .7); }
+@media (prefers-reduced-motion: reduce) { [data-look="gotham"] .hdr h1 { animation: none; } }
 
 /* =====================================================================================================
    MARBLE: the Stoa. Veined marble and parchment, carved Roman capitals, bronze, laurel green and terracotta;
@@ -175,7 +198,7 @@
 .looks button i { height: 54px; border-radius: 6px; display: block; }
 .looks button span { font-size: 12px; font-weight: 700; text-align: center; }
 .looks button.on { box-shadow: 0 0 0 2px var(--accent); }
-.looks i.lk-gotham { background: radial-gradient(circle at 1px 1px, rgba(255,255,255,.12) 1px, transparent 1.4px) 0 0 / 4px 4px, linear-gradient(135deg, #14151b 60%, #ff3b36 60% 70%, #0a0b0f 70%); }
+.looks i.lk-gotham { background: url(img/city.svg) center 70% / cover, #0b0822; box-shadow: inset -2px 0 0 #ff2d7a, inset 2px 0 0 #27e1ff; }
 .looks i.lk-marble { background: linear-gradient(115deg, transparent 40%, rgba(110,95,80,.25) 41%, transparent 43%), linear-gradient(#faf7f0, #e6dfd1); box-shadow: inset 0 0 0 1px #d6cab6; }
 .looks i.lk-classic { background: linear-gradient(135deg, #1c1d21 60%, #d9a441 60% 70%, #111214 70%); }
 /* Marble: wide capitals need room; numbers use lining figures so data reads straight */
@@ -187,5 +210,16 @@
 [data-look="marble"] .qseg button { font-size: 9.5px; letter-spacing: .06em; }
 [data-look="marble"] .gauge b, [data-look="marble"] .phead b, [data-look="marble"] .stat b, [data-look="marble"] .rstats b, [data-look="marble"] .stepper output,
 [data-look="marble"] .qst b, [data-look="marble"] .rest b, [data-look="marble"] .item b, [data-look="marble"] .next { font-variant-numeric: lining-nums tabular-nums; }
-/* Gotham: same care for the plan header */
-[data-look="gotham"] .plhead .muted { white-space: nowrap; }
+/* Gotham: Spider-Man stands in front of the neon city */
+[data-look="gotham"] .ready { background: linear-gradient(180deg, rgba(11, 8, 34, .05), rgba(11, 8, 34, .35) 50%, rgba(21, 19, 56, .95) 100%), url(img/city.svg) center 85% / cover no-repeat, #151338; }
+[data-look="gotham"] .ready svg.body.mini { filter: drop-shadow(-3px 0 0 rgba(39, 225, 255, .45)) drop-shadow(3px 0 0 rgba(255, 45, 122, .45)); }
+[data-look="gotham"] .ready .rmsg, [data-look="gotham"] .ready .rbars { text-shadow: 0 1px 3px rgba(0, 0, 0, .8); }
+[data-look="gotham"] .ready .gauge { background: radial-gradient(circle, rgba(11, 8, 34, .75) 55%, transparent 70%); border-radius: 50%; }
+[data-look="gotham"] .next { color: #fff; }
+[data-look="gotham"] body::before { height: 300px; opacity: .55; }
+/* Gotham contrast: magenta as text is a lighter pink; magenta behind white text is deeper */
+[data-look="gotham"] { --accent: #ff5c96; --fill: #d60f62; }
+[data-look="gotham"] .seg button.on, [data-look="gotham"] .qseg button.on, [data-look="gotham"] .chips button.on,
+[data-look="gotham"] .plrow.done .plck, [data-look="gotham"] .tile.tdone .tp, [data-look="gotham"] .rest { background: var(--fill); border-color: var(--fill); color: #fff; }
+[data-look="gotham"] .big.primary, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn.primary { background: linear-gradient(100deg, #c80c5b, #e0126a 55%, #ec2a74); }
+[data-look="gotham"] .tabs button { color: #908cc4; }

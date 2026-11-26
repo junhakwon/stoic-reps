@@ -1,9 +1,9 @@
 // Offline support. Online, every app file comes from the network (so updates show up right away) and the copy is
 // kept for offline use; offline, the kept copy is used. Bump VERSION when any file changes so phones pick it up.
-const VERSION = "stoicreps-33";
+const VERSION = "stoicreps-34";
 const FILES = ["./", "index.html", "style.css", "app.js", "quotes.js", "garmin.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png", "spidey.png", "widget/unbowed-widget.js", "looks.css",
-  "fonts/bebas-neue.woff2", "fonts/barlow-condensed-600.woff2", "fonts/cinzel-600.woff2", "fonts/cormorant-600.woff2", "fonts/cormorant-500-italic.woff2"];
+  "img/city.svg", "fonts/bebas-neue.woff2", "fonts/barlow-condensed-600.woff2", "fonts/cinzel-600.woff2", "fonts/cormorant-600.woff2", "fonts/cormorant-500-italic.woff2"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => Promise.all(FILES.map(f =>
     fetch(f, { cache: "reload" }).then(r => r.ok && c.put(f, r)).catch(() => {})))));
