@@ -367,7 +367,8 @@ function logCur() {
   const pr = logSet({ t: stamp(), ex: cur.ex, reps: cur.reps, kg: cur.kg, v: VARS[cur.ex] ? cur.v : 0, gtg: false });
   drawSheet();
   if (!logDay) startRest(S.settings.rest[cur.kg > 0 ? "wt" : "bw"]);
-  if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); toast(`Logged ${cur.reps}${loadText(cur.ex, cur.kg, cur.v)}`, false, true); }
+  // no toast here: the new set shows as a chip in the sheet (tap it twice to remove), and a toast would sit over the sheet's buttons
+  if (pr) celebrate(pr); else { $("#sh-quote").innerHTML = quoteCard(nextQuote()); const c = document.querySelectorAll("#sh-today button"); if (c.length) c[c.length - 1].classList.add("new"); }
 }
 
 // ---------- PR celebration ----------
@@ -559,9 +560,13 @@ function runsProgress() {
 
 // ---------- screens ----------
 let tab = "home", progEx = "pullup";
+const LOOKS = { gotham: { name: "Gotham", theme: "dark", color: "#0a0b0f" }, marble: { name: "Marble", theme: "light", color: "#ece6da" }, classic: { name: "Classic", theme: null, color: "#111214" } };
 function render() {
   memoBox.clear();
-  document.documentElement.dataset.theme = S.settings.theme;
+  // the look (Gotham, Marble or Classic) sets the whole visual style; Classic keeps its own dark/light switch
+  const look = LOOKS[S.settings.look] ? S.settings.look : "gotham", root = document.documentElement;
+  root.dataset.look = look; root.dataset.theme = look === "classic" ? S.settings.theme : LOOKS[look].theme;
+  const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = look === "classic" ? (S.settings.theme === "light" ? "#f4f1ea" : "#111214") : LOOKS[look].color;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
 }
@@ -585,7 +590,7 @@ function homeView() {
     ${S.runs.filter(r => dayKey(r.t) === d).map(runCard).join("")}
     ${quickBar()}`;
 }
-const recColor = v => v >= 70 ? "var(--good)" : v >= 40 ? "var(--accent)" : "var(--warn)";
+const recColor = v => v >= 70 ? "var(--good)" : v >= 40 ? "var(--rec-mid, var(--accent))" : "var(--rec-low, var(--warn))";   // a look can recolour mid and low
 // readiness: the average recovery of all muscles, a ring, a line, and upper / core / legs bars
 function readyCard(st) {
   const avg = a => Math.round(a.reduce((t, m) => t + st[m].rec, 0) / a.length), all = avg(Object.keys(MUSCLES));
@@ -1258,8 +1263,9 @@ function moreView() {
     <h3>Goals</h3><div class="card">${goals}</div>
     <h3>Settings</h3>
     ${fold("training", "Training", "Groove sets, rest timer, rep ranges, heart rate", training)}
-    <div class="card"><div class="inrow"><label>Appearance</label><div class="seg mini">
-      <button data-theme-set="dark" class="${st.theme === "dark" ? "on" : ""}">Dark</button><button data-theme-set="light" class="${st.theme === "light" ? "on" : ""}">Light</button></div></div></div>
+    <div class="card"><label class="fl">Look</label><div class="looks">${Object.keys(LOOKS).map(k => `<button data-look-set="${k}" class="${(LOOKS[st.look] ? st.look : "gotham") === k ? "on" : ""}" aria-label="${LOOKS[k].name} look"><i class="lk-${k}"></i><span>${LOOKS[k].name}</span></button>`).join("")}</div>
+      ${st.look === "classic" ? `<div class="inrow"><label>Classic</label><div class="seg mini">
+      <button data-theme-set="dark" class="${st.theme === "dark" ? "on" : ""}">Dark</button><button data-theme-set="light" class="${st.theme === "light" ? "on" : ""}">Light</button></div></div>` : ""}</div>
     <h3>Backup</h3><div class="card">
       <div class="btn2"><button class="big" data-act="export">Export</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden>
       <p class="muted fnote">Your data lives only on this phone. Export now and then and keep the file in iCloud Drive or Files.</p></div>
@@ -1329,6 +1335,7 @@ document.addEventListener("click", e => {
   if (d.goalDone) { const g = S.goals.find(x => x.id === +d.goalDone); g.done = !g.done; save(); render(); return; }
   if (d.goalDel) { S.goals = S.goals.filter(x => x.id !== +d.goalDel); save(); render(); return; }
   if (d.themeSet) { S.settings.theme = d.themeSet; save(); render(); return; }
+  if (d.lookSet) { S.settings.look = d.lookSet; save(); render(); return; }
   if (d.act === "bw") { const v = parseFloat($("#bw-in").value); if (v > 30 && v < 250) { S.body[dayKey()] = v; save(); toast("Body weight saved"); render(); } else toast("Enter your weight in kg", true); return; }
   if (d.act === "goal-add") {
     const ex = $("#g-ex").value, reps = parseInt($("#g-reps").value), kg = parseFloat($("#g-kg").value) || 0;

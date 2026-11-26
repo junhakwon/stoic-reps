@@ -1,0 +1,191 @@
+/* Looks: whole visual identities layered over style.css (which stays the "Classic" look).
+   <html data-look="gotham|marble|classic">. Fonts are bundled (fonts/, SIL Open Font License) so they work offline. */
+
+@font-face { font-family: "Bebas Neue"; src: url(fonts/bebas-neue.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url(fonts/barlow-condensed-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Cinzel"; src: url(fonts/cinzel-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Cormorant Garamond"; src: url(fonts/cormorant-600.woff2) format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Cormorant Garamond"; src: url(fonts/cormorant-500-italic.woff2) format("woff2"); font-weight: 500; font-style: italic; font-display: swap; }
+
+/* =====================================================================================================
+   GOTHAM: night city, comic-panel noir. Near-black with a halftone screen, crimson + steel, tall condensed
+   capitals, hard edges with cut corners.
+   ===================================================================================================== */
+[data-look="gotham"] {
+  --bg: #0a0b0f; --card: #14151b; --card2: #1e2028; --text: #f3f1ec; --muted: #9298a6;
+  --accent: #ff3b36; --accent-ink: #ffffff; --good: #2fd38c; --warn: #ffb03a; --line: #2b2e38;
+  --steel: #4c90ff; --rec-mid: #ffb03a; --rec-low: #ff3b36; --display: "Bebas Neue", "Arial Narrow", Impact, sans-serif; --label: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  --cut-s: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%);
+  --slant: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+[data-look="gotham"] body {
+  background:
+    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(255, 59, 54, .16), transparent 60%),
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, .055) 1px, transparent 1.4px) 0 0 / 5px 5px,
+    linear-gradient(#101118, #07080b 60%) fixed;
+  background-color: var(--bg);
+}
+/* display type */
+[data-look="gotham"] h1, [data-look="gotham"] .hdr h1 { font: 400 34px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+[data-look="gotham"] .hdr h1 { font-size: 38px; text-shadow: 3px 3px 0 rgba(255, 59, 54, .55); }
+[data-look="gotham"] h2 { font: 400 28px/1 var(--display); letter-spacing: .04em; }
+[data-look="gotham"] h3, [data-look="gotham"] .qhead { font: 400 22px/1 var(--display); letter-spacing: .06em; color: var(--text); display: flex; align-items: center; gap: 8px; }
+[data-look="gotham"] h3::before { content: ""; width: 14px; height: 5px; background: var(--accent); transform: skewX(-30deg); flex: none; }
+[data-look="gotham"] .gauge b, [data-look="gotham"] .phead b, [data-look="gotham"] .stat b, [data-look="gotham"] .rstats b,
+[data-look="gotham"] .stepper output, [data-look="gotham"] .qst b, [data-look="gotham"] .rest b { font-family: var(--display); font-weight: 400; letter-spacing: .03em; }
+[data-look="gotham"] .gauge b { font-size: 46px; }
+[data-look="gotham"] .stepper output { font-size: 64px; }
+[data-look="gotham"] .stat b { font-size: 34px; }
+[data-look="gotham"] .rstats b { font-size: 26px; }
+[data-look="gotham"] .phead b { font-size: 26px; }
+[data-look="gotham"] .plhead b, [data-look="gotham"] .tile .th b, [data-look="gotham"] .plt b, [data-look="gotham"] .runcard .rhead b,
+[data-look="gotham"] .fold > summary b, [data-look="gotham"] .sheet-head h2 { font: 400 23px/1.05 var(--display); letter-spacing: .04em; }
+[data-look="gotham"] .plt b { font-size: 21px; }
+[data-look="gotham"] .tile .th b { font-size: 21px; }
+[data-look="gotham"] .big, [data-look="gotham"] .qadd, [data-look="gotham"] .tabs button, [data-look="gotham"] .seg button, [data-look="gotham"] .qseg button,
+[data-look="gotham"] .chips button, [data-look="gotham"] .small-btn, [data-look="gotham"] .tick, [data-look="gotham"] .dayctl span,
+[data-look="gotham"] .gauge span, [data-look="gotham"] .rbars, [data-look="gotham"] .plabels, [data-look="gotham"] .qtype button, [data-look="gotham"] .field label {
+  font-family: var(--label); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+[data-look="gotham"] .big, [data-look="gotham"] .qadd { font-size: 20px; }
+[data-look="gotham"] .tabs button { font-size: 13px; }
+/* panels: hard edges, a cut corner, a hairline frame */
+[data-look="gotham"] .card, [data-look="gotham"] .tile, [data-look="gotham"] .stat, [data-look="gotham"] .sheet-card {
+  border-radius: 0; clip-path: var(--cut); background: linear-gradient(160deg, #191a21, var(--card) 55%); box-shadow: inset 0 0 0 1px var(--line); }
+[data-look="gotham"] .sheet-card { clip-path: none; border-top: 3px solid var(--accent); }
+[data-look="gotham"] .stat { background: var(--card2); clip-path: var(--cut-s); }
+[data-look="gotham"] .ready { box-shadow: inset 0 0 0 1px var(--line), inset 0 -60px 80px -40px rgba(255, 59, 54, .18); }
+[data-look="gotham"] .plan:not(.plnext) { box-shadow: inset 0 0 0 1px var(--line), inset 4px 0 0 var(--accent); }
+[data-look="gotham"] .plan.plnext { box-shadow: inset 0 0 0 1px var(--steel); border: 0; }
+[data-look="gotham"] .plrow, [data-look="gotham"] .tick, [data-look="gotham"] .lastrow, [data-look="gotham"] .qst, [data-look="gotham"] .qseg,
+[data-look="gotham"] .qtype, [data-look="gotham"] .dayctl, [data-look="gotham"] .today-sets button, [data-look="gotham"] .ah, [data-look="gotham"] .cd,
+[data-look="gotham"] input[type=number], [data-look="gotham"] select, [data-look="gotham"] .xbtn { border-radius: 0; }
+[data-look="gotham"] .plrow { clip-path: var(--cut-s); background: var(--card2); }
+[data-look="gotham"] .plck, [data-look="gotham"] .tile .tp, [data-look="gotham"] .tick .box { border-radius: 0; }
+[data-look="gotham"] .plrow.done .plck, [data-look="gotham"] .tile.tdone .tp { background: var(--accent); border-color: var(--accent); }
+/* buttons: slanted slabs */
+[data-look="gotham"] .big, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn, [data-look="gotham"] .chips button, [data-look="gotham"] .seg button,
+[data-look="gotham"] .stepper button, [data-look="gotham"] .x { border-radius: 0; clip-path: var(--slant); }
+[data-look="gotham"] .big.primary, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn.primary {
+  background: linear-gradient(180deg, #e6332d, #c4221d); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+[data-look="gotham"] .seg button.on, [data-look="gotham"] .qseg button.on, [data-look="gotham"] .chips button.on { background: var(--accent); color: #fff; }
+/* the tab bar: black with a red rule; the active tab gets a red slash above it */
+[data-look="gotham"] .tabs { background: #050608; border-top: 2px solid var(--accent); }
+[data-look="gotham"] .tabs button { position: relative; color: #6f7582; }
+[data-look="gotham"] .tabs button.on { color: #fff; }
+[data-look="gotham"] .tabs button.on::before { content: ""; position: absolute; top: -2px; left: 30%; right: 30%; height: 4px; background: #fff; transform: skewX(-30deg); }
+[data-look="gotham"] .tabs button.on svg { stroke: var(--accent); }
+/* quote: a comic caption box */
+[data-look="gotham"] .quote { background: #f3eedf; color: #15161b; box-shadow: 4px 4px 0 var(--accent); clip-path: none; border-radius: 0; margin-right: 4px; }
+[data-look="gotham"] .quote blockquote { font: 600 21px/1.2 var(--label); text-transform: none; letter-spacing: .01em; }
+[data-look="gotham"] .quote cite { color: #55565e; font-family: var(--label); text-transform: uppercase; letter-spacing: .06em; font-size: 13px; }
+[data-look="gotham"] .quote cite i { font-style: normal; }
+[data-look="gotham"] .quote .fav { color: #8c8a84; }
+[data-look="gotham"] .quote .fav.on { color: var(--accent); }
+/* runs and the calendar get the steel blue */
+[data-look="gotham"] .cd.run, [data-look="gotham"] .path .pd.run, [data-look="gotham"] .cleg i.run, [data-look="gotham"] .act > i.sp-run { background: var(--steel); fill: var(--steel); }
+[data-look="gotham"] .cd.both { box-shadow: inset 0 0 0 3px var(--steel); }
+[data-look="gotham"] .cd.lift, [data-look="gotham"] .cd.both { color: #fff; background: #9e1f1c; }
+[data-look="gotham"] .cleg i.lift, [data-look="gotham"] .cleg i.both { background: #9e1f1c; }
+[data-look="gotham"] .next { font: 400 34px/1 var(--display); letter-spacing: .03em; }
+[data-look="gotham"] .next .setn { font: 600 16px var(--label); text-transform: uppercase; letter-spacing: .06em; }
+[data-look="gotham"] .gauge .gv { stroke-linecap: butt; }
+[data-look="gotham"] .gauge .gt { stroke: #262833; }
+[data-look="gotham"] .rest { border-radius: 0; clip-path: var(--slant); padding-left: 22px; }
+[data-look="gotham"] .toast { border-radius: 0; background: #f3eedf; color: #15161b; box-shadow: 4px 4px 0 var(--accent); }
+[data-look="gotham"] .fold > summary small { font-family: inherit; }
+[data-look="gotham"] .ptabs { border-radius: 0; background: #0f1015; box-shadow: inset 0 0 0 1px var(--line); }
+[data-look="gotham"] .link { color: #ff6a64; }
+
+/* =====================================================================================================
+   MARBLE: the Stoa. Veined marble and parchment, carved Roman capitals, bronze, laurel green and terracotta;
+   thin inscribed rules instead of rounded boxes.
+   ===================================================================================================== */
+[data-look="marble"] {
+  --bg: #ece6da; --card: #faf7f0; --card2: #efe8da; --text: #2b2621; --muted: #6f665b;
+  --accent: #8a5a24; --accent-ink: #fffaf0; --good: #4a6a35; --warn: #a0402a; --line: #d6cab6;
+  --steel: #3e6f8f; --carve: "Cinzel", "Trajan Pro", "Times New Roman", serif; --serif: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+}
+[data-look="marble"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='v'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.0035 .012' numOctaves='4' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 .42  0 0 0 0 .38  0 0 0 0 .33  0 0 0 -2.6 1.55'/%3E%3C/filter%3E%3Crect width='600' height='600' filter='url(%23v)' opacity='.33'/%3E%3C/svg%3E") 0 0 / 600px 600px,
+    radial-gradient(ellipse 90% 50% at 30% 0%, rgba(255, 255, 255, .8), transparent 70%),
+    linear-gradient(#f1ece2, #e6dfd1);
+  background-color: var(--bg);
+}
+[data-look="marble"] h1, [data-look="marble"] .hdr h1 { font: 600 26px/1.1 var(--carve); letter-spacing: .12em; text-transform: uppercase; }
+[data-look="marble"] .hdr h1 { font-size: 28px; }
+[data-look="marble"] h2 { font: 600 20px/1.1 var(--carve); letter-spacing: .08em; }
+/* section heads: carved small capitals between two hairlines */
+[data-look="marble"] h3, [data-look="marble"] .qhead { font: 600 13px/1 var(--carve); letter-spacing: .22em; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+[data-look="marble"] h3::before, [data-look="marble"] h3::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+[data-look="marble"] h3::before { flex: 0 0 18px; }
+[data-look="marble"] .gauge b, [data-look="marble"] .phead b, [data-look="marble"] .stat b, [data-look="marble"] .rstats b,
+[data-look="marble"] .stepper output, [data-look="marble"] .qst b, [data-look="marble"] .rest b, [data-look="marble"] .item b { font-family: var(--serif); font-weight: 600; letter-spacing: 0; }
+[data-look="marble"] .gauge b { font-size: 44px; }
+[data-look="marble"] .stepper output { font-size: 60px; }
+[data-look="marble"] .stat b { font-size: 34px; }
+[data-look="marble"] .rstats b { font-size: 26px; }
+[data-look="marble"] .phead b { font-size: 26px; }
+[data-look="marble"] .plhead b, [data-look="marble"] .tile .th b, [data-look="marble"] .plt b, [data-look="marble"] .runcard .rhead b,
+[data-look="marble"] .fold > summary b, [data-look="marble"] .sheet-head h2 { font: 600 16px/1.2 var(--carve); letter-spacing: .06em; }
+[data-look="marble"] .big, [data-look="marble"] .qadd, [data-look="marble"] .tabs button, [data-look="marble"] .seg button, [data-look="marble"] .qseg button,
+[data-look="marble"] .chips button, [data-look="marble"] .small-btn, [data-look="marble"] .gauge span, [data-look="marble"] .dayctl span, [data-look="marble"] .field label {
+  font-family: var(--carve); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+[data-look="marble"] .big, [data-look="marble"] .qadd { font-size: 15px; }
+[data-look="marble"] .tabs button, [data-look="marble"] .seg button, [data-look="marble"] .qseg button, [data-look="marble"] .chips button, [data-look="marble"] .small-btn { font-size: 11px; }
+/* tablets: square, framed by an inscribed double rule */
+[data-look="marble"] .card, [data-look="marble"] .tile, [data-look="marble"] .stat {
+  border-radius: 2px; background: color-mix(in srgb, var(--card) 94%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 5px var(--card), inset 0 0 0 6px color-mix(in srgb, var(--line) 60%, transparent), 0 1px 0 rgba(255, 255, 255, .7), 0 6px 18px -10px rgba(70, 50, 20, .35); }
+[data-look="marble"] .stat { background: var(--card2); box-shadow: inset 0 0 0 1px var(--line); }
+[data-look="marble"] .sheet-card { border-radius: 4px 4px 0 0; background: var(--card); box-shadow: inset 0 3px 0 var(--accent); }
+[data-look="marble"] .plrow, [data-look="marble"] .tick, [data-look="marble"] .lastrow, [data-look="marble"] .qst, [data-look="marble"] .qseg, [data-look="marble"] .qtype,
+[data-look="marble"] .dayctl, [data-look="marble"] .today-sets button, [data-look="marble"] .ah, [data-look="marble"] .cd, [data-look="marble"] input[type=number],
+[data-look="marble"] select, [data-look="marble"] .xbtn, [data-look="marble"] .plck, [data-look="marble"] .tile .tp, [data-look="marble"] .tick .box { border-radius: 2px; }
+[data-look="marble"] .plrow { background: var(--card2); box-shadow: inset 0 0 0 1px var(--line); }
+[data-look="marble"] .big, [data-look="marble"] .qadd, [data-look="marble"] .small-btn, [data-look="marble"] .chips button, [data-look="marble"] .seg button,
+[data-look="marble"] .stepper button, [data-look="marble"] .x { border-radius: 2px; }
+[data-look="marble"] .big.primary, [data-look="marble"] .qadd, [data-look="marble"] .small-btn.primary {
+  background: linear-gradient(180deg, #8f5e25, #74481a); box-shadow: inset 0 0 0 1px rgba(255, 240, 210, .35), inset 0 0 0 4px #85561f, inset 0 0 0 5px rgba(255, 240, 210, .25); }
+[data-look="marble"] .seg button.on, [data-look="marble"] .qseg button.on, [data-look="marble"] .chips button.on { background: var(--accent); color: var(--accent-ink); }
+[data-look="marble"] .tabs { background: #f6f2ea; border-top: 0; box-shadow: 0 -1px 0 var(--line), 0 -4px 0 #f6f2ea, 0 -5px 0 var(--line); }
+[data-look="marble"] .tabs button.on { color: var(--accent); }
+/* the quote, set as an inscription */
+[data-look="marble"] .quote { text-align: center; padding: 22px 22px 18px; }
+[data-look="marble"] .quote blockquote { font: italic 500 23px/1.3 var(--serif); margin: 0 0 10px; }
+[data-look="marble"] .quote blockquote::before { content: "❝"; display: block; font-size: 26px; color: var(--accent); line-height: 1; margin-bottom: 4px; font-style: normal; }
+[data-look="marble"] .quote cite { font: 600 11px/1.4 var(--carve); letter-spacing: .14em; text-transform: uppercase; }
+[data-look="marble"] .quote cite i { font-style: normal; }
+[data-look="marble"] .quote .fav { top: 6px; right: 6px; }
+[data-look="marble"] .gauge .gt { stroke: #e6dccb; }
+[data-look="marble"] .next { font: 600 30px/1.1 var(--serif); }
+[data-look="marble"] .next .setn { font: 600 12px var(--carve); letter-spacing: .12em; text-transform: uppercase; }
+[data-look="marble"] .gauge .gv { stroke-linecap: butt; }
+[data-look="marble"] .cd.run, [data-look="marble"] .path .pd.run, [data-look="marble"] .cleg i.run, [data-look="marble"] .act > i.sp-run { background: var(--steel); fill: var(--steel); }
+[data-look="marble"] .cd.both { box-shadow: inset 0 0 0 3px var(--steel); }
+[data-look="marble"] .toast { border-radius: 2px; background: #2b2621; color: #faf7f0; }
+[data-look="marble"] .rest { border-radius: 2px; }
+[data-look="marble"] .ptabs { border-radius: 2px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+[data-look="marble"] .plan.plnext { border: 0; box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 0 5px var(--card), inset 0 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent); }
+
+/* the look picker in More */
+.looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.looks button { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 6px; border-radius: 10px; background: var(--card2); min-height: 44px; }
+.looks button i { height: 54px; border-radius: 6px; display: block; }
+.looks button span { font-size: 12px; font-weight: 700; text-align: center; }
+.looks button.on { box-shadow: 0 0 0 2px var(--accent); }
+.looks i.lk-gotham { background: radial-gradient(circle at 1px 1px, rgba(255,255,255,.12) 1px, transparent 1.4px) 0 0 / 4px 4px, linear-gradient(135deg, #14151b 60%, #ff3b36 60% 70%, #0a0b0f 70%); }
+.looks i.lk-marble { background: linear-gradient(115deg, transparent 40%, rgba(110,95,80,.25) 41%, transparent 43%), linear-gradient(#faf7f0, #e6dfd1); box-shadow: inset 0 0 0 1px #d6cab6; }
+.looks i.lk-classic { background: linear-gradient(135deg, #1c1d21 60%, #d9a441 60% 70%, #111214 70%); }
+/* Marble: wide capitals need room; numbers use lining figures so data reads straight */
+[data-look="marble"] h3, [data-look="marble"] .qhead { line-height: 1.45; }
+[data-look="marble"] .plhead b { font-size: 14px; white-space: nowrap; }
+[data-look="marble"] .plhead .muted { font-size: 12px; white-space: nowrap; }
+[data-look="marble"] .qhead { font-size: 11px; letter-spacing: .16em; }
+[data-look="marble"] .qhead::before, [data-look="marble"] .qhead::after { content: none; }
+[data-look="marble"] .qseg button { font-size: 9.5px; letter-spacing: .06em; }
+[data-look="marble"] .gauge b, [data-look="marble"] .phead b, [data-look="marble"] .stat b, [data-look="marble"] .rstats b, [data-look="marble"] .stepper output,
+[data-look="marble"] .qst b, [data-look="marble"] .rest b, [data-look="marble"] .item b, [data-look="marble"] .next { font-variant-numeric: lining-nums tabular-nums; }
+/* Gotham: same care for the plan header */
+[data-look="gotham"] .plhead .muted { white-space: nowrap; }

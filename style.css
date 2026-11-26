@@ -534,3 +534,11 @@ h3.sec { margin: 20px 2px 8px; }
 .wsetup a { display: inline-block; padding: 13px 0; margin: -13px 0; }
 /* the suit-up and GO flashes never catch taps: they fade on their own, and a tap meant for Log set must log the set */
 .suit, .restgo { pointer-events: none; }
+.fl { display: block; font-size: 14px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+/* toasts never block what's under them (only Undo is tappable), and while the log sheet is open they show at the top,
+   below the rest timer, so they can't cover Log set */
+.toast { pointer-events: none; }
+.toast button { pointer-events: auto; }
+.sheet:not([hidden]) ~ .toast { top: calc(env(safe-area-inset-top) + 70px); bottom: auto; }
+.today-sets button.new { animation: chip-pop .5s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 0 2px var(--accent); }
+@keyframes chip-pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.12); } }
