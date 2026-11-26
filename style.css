@@ -542,3 +542,10 @@ h3.sec { margin: 20px 2px 8px; }
 .sheet:not([hidden]) ~ .toast { top: calc(env(safe-area-inset-top) + 70px); bottom: auto; }
 .today-sets button.new { animation: chip-pop .5s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 0 2px var(--accent); }
 @keyframes chip-pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.12); } }
+/* rounds already done today */
+.rdlist { padding-bottom: 8px; }
+.rdone { display: grid; grid-template-columns: 28px auto 1fr; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.rdone:first-of-type { border-top: 0; margin-top: 6px; }
+.rdone .plck { background: var(--good); border-color: var(--good); color: #fff; font-size: 14px; }
+.rdone b { white-space: nowrap; }
+.rdone span:last-child { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

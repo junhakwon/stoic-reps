@@ -223,3 +223,7 @@
 [data-look="gotham"] .plrow.done .plck, [data-look="gotham"] .tile.tdone .tp, [data-look="gotham"] .rest { background: var(--fill); border-color: var(--fill); color: #fff; }
 [data-look="gotham"] .big.primary, [data-look="gotham"] .qadd, [data-look="gotham"] .small-btn.primary { background: linear-gradient(100deg, #c80c5b, #e0126a 55%, #ec2a74); }
 [data-look="gotham"] .tabs button { color: #908cc4; }
+[data-look="gotham"] .rdone b, [data-look="gotham"] .rdlist .plhead b { font: 400 19px/1 var(--display); letter-spacing: .05em; }
+[data-look="gotham"] .rdone .plck { background: var(--fill); border-color: var(--fill); border-radius: 0; box-shadow: -2px 2px 0 var(--cyan); }
+[data-look="marble"] .rdone b { font: 600 12px/1.2 var(--carve); letter-spacing: .08em; }
+[data-look="marble"] .rdone .plck { border-radius: 2px; }

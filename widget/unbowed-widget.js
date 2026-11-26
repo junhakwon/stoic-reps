@@ -41,7 +41,7 @@ function view(d) {
     const pending = d.first.items.find(i => i.s < 2) || (d.first.done && d.second ? d.second.find(i => i.s < 2) : null);
     const status = d.done ? (d.first.done ? "Done today ✓" : "Trained today ✓") : d.restOk ? "Rest day OK · streak safe" : d.n ? `Train today → ${d.n + 1}` : "Start a streak today";
     const showNext = d.first.started && d.first.done && d.second;
-    return { n: d.n, rank: d.rank, status, warn: !d.done && !d.restOk && d.n > 0, title: showNext ? "Next workout" : "Today's workout",
+    return { n: d.n, rank: d.rank, status, warn: !d.done && !d.restOk && d.n > 0, title: showNext ? "Next workout" : (d.first.title || "Today's workout"),
       items: showNext ? d.second : d.first.items, pending, rest: d.first.rest && !d.done, fresh: true,
       next: d.next && d.next.in >= 0 ? `${d.next.name} ${d.next.in <= 0 ? "today" : d.next.in === 1 ? "tomorrow" : `in ${d.next.in} days`}` : "" };
   }

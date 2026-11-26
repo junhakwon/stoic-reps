@@ -296,7 +296,7 @@ function logSet(set) {
   const pv = set.ex === "pullup" ? (set.v || 0) : 0, prBw = maxBw(set.ex, pv);
   const prior = setsOf(set.ex).filter(s => (s.v || 0) === (set.v || 0));
   const before = streak(), first = !logDay && !activeDays().has(dayKey());
-  if (!set.gtg && dayKey(set.t) === dayKey()) freezePlan(set.ex);
+  if (!logDay && dayKey(set.t) === dayKey()) startRound(set.ex, null, set.gtg, set.t);
   S.sets.push(set); lastSet = set; save();
   flashAt = Date.now(); flashM = musclesOf(set); afterLog(before, first, set);
   // records
@@ -324,8 +324,8 @@ let cur = null;   // { ex, reps, kg, v }
 let pendingDel = null;   // index in S.sets of the set chip waiting for a second tap
 function openSheet(ex) {
   pendingDel = null;
-  const sg = suggest(ex, true);
-  cur = { ex, reps: sg.reps, kg: sg.kg, v: sg.v };   // start at today's target; "Same as last" gives last session's set
+  const sg = suggest(ex, true), rt = roundTarget(ex);
+  cur = rt ? { ex, reps: rt.reps, kg: rt.kg, v: rt.v } : { ex, reps: sg.reps, kg: sg.kg, v: sg.v };   // start at today's target; "Same as last" gives last session's set
   $("#sh-title").textContent = EX[ex].name + (logDay ? " · " + dayLabel(logDay) : "");
   $("#sh-per").textContent = EX[ex].perLeg ? "(per leg)" : "";
   $("#sh-var").hidden = !VARS[ex];
@@ -334,9 +334,9 @@ function openSheet(ex) {
   drawSheet(); $("#sheet").hidden = false;
 }
 function drawSheet() {
-  const sg = suggest(cur.ex, true), n = S.sets.filter(s => s.ex === cur.ex && !s.gtg && dayKey(s.t) === curDay()).length;
-  $("#sh-next").innerHTML = esc(sg.text.replace(/^Next:/, logDay ? "Plan:" : "Today:")) +
-    `<span class="setn">${n >= sg.sets ? `all ${sg.sets} sets done ✓` : `set ${n + 1} of ${sg.sets}`}</span>`;
+  const sg = suggest(cur.ex, true), rt = roundTarget(cur.ex), n = rt ? rt.n : S.sets.filter(s => s.ex === cur.ex && !s.gtg && dayKey(s.t) === curDay()).length, of = rt ? rt.planned : sg.sets;
+  $("#sh-next").innerHTML = esc(rt ? `Back-off: ${rt.planned} × ${rt.reps}${loadText(cur.ex, rt.kg, rt.v)}` : sg.text.replace(/^Next:/, logDay ? "Plan:" : "Today:")) +
+    `<span class="setn">${n >= of ? `all ${of} sets done ✓` : `set ${n + 1} of ${of}`}</span>`;
   $("#sh-reps").textContent = cur.reps;
   $("#sh-kg").textContent = cur.kg ? "+" + fmtKg(cur.kg) : "0";
   if (VARS[cur.ex]) $("#sh-var-seg").innerHTML = VARS[cur.ex].map((n, i) => `<button data-var="${i}" class="${cur.v === i ? "on" : ""}">${n}</button>`).join("");
@@ -514,7 +514,7 @@ function addRun(r) {
   if (dup && !(FILE.includes(r.src) && !FILE.includes(dup.src))) { toast("That run is already in", true); return; }
   if (dup) S.runs.splice(S.runs.indexOf(dup), 1);
   const k = dayKey(r.t), before = streak(), first = !dup && k === dayKey() && !activeDays().has(k);
-  if (k === dayKey()) freezePlan(null, r);
+  if (k === dayKey()) startRound(null, r);
   S.runs.push(r); S.runs.sort((a, b) => a.t - b.t); save();
   if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtDist(r) + " in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
   $("#modal").hidden = true; pendingRunDel = null;
@@ -612,8 +612,7 @@ function readyCard(st) {
 // one exercise per area (pull, push, legs, core). Each is scored by how overdue it is against your own rhythm
 // (how often you did it in the last 4 weeks), how much you usually do it, and how fresh its muscles are.
 // Areas under 55% recovered sit out. A run joins when you run regularly, it's due, and your legs are fresh.
-// The first plan is judged on how you were before today and is kept (S.daily[day].plan) once you start it, so it
-// stays put. After that, a second plan is picked from what the first one left out, judged on how fresh you are now.
+// Workouts come in rounds, as many as you want (see "rounds" below).
 const AREAS = [["pull", ["pullup"]], ["push", ["pushup"]], ["legs", ["squat", "lunge"]], ["core", ["kneeraise", "legraise"]]];
 const AREA_OF = {}; for (const [a, xs] of AREAS) for (const x of xs) AREA_OF[x] = a;
 const daysSince = k => k ? Math.round((keyToDate(dayKey()) - keyToDate(k)) / 864e5) : null;
@@ -624,14 +623,14 @@ const actsToday = () => S.runs.filter(r => dayKey(r.t) === dayKey());   // runs,
 const ranToday = () => actsToday().some(isRun);
 const runsOf4w = () => S.runs.filter(r => isRun(r) && dayKey(r.t) >= addDays(dayKey(), -27));
 const lastRunOf = () => S.runs.filter(isRun).reduce((a, r) => !a || r.t > a.t ? r : a, null);
-function exInfo(ex, rec) {
+function exInfo(ex, rec, win) {   // win: [from, to) times; sets logged in it count as done (default: all of today)
   const today = dayKey(), from = addDays(today, -27), mine = S.sets.filter(s => s.ex === ex && !s.gtg);
   const days = new Set(mine.map(s => dayKey(s.t)).filter(k => k >= from && k < today));
   const past = mine.map(s => dayKey(s.t)).filter(k => k < today).sort(), d = daysSince(past[past.length - 1]);
   const m = MUSCLE_OF[ex].reduce((a, b) => rec[b] < rec[a] ? b : a);
   const gap = days.size ? Math.max(1.5, 28 / days.size) : 3;       // your usual days between sessions
   const due = d === null ? .7 : d / gap;                            // 1 = right on your rhythm
-  return { ex, area: AREA_OF[ex], m, rec: rec[m], d, due, doneN: mine.filter(s => dayKey(s.t) === today).length,
+  return { ex, area: AREA_OF[ex], m, rec: rec[m], d, due, doneN: mine.filter(s => win ? s.t >= win[0] && s.t < win[1] : dayKey(s.t) === today).length,
     planned: suggest(ex, true).sets, score: Math.min(due, 3) + Math.min(days.size, 8) * .06 + rec[m] / 200 };
 }
 // one pick per area from the exercises not excluded; anything already started counts as picked
@@ -657,26 +656,97 @@ function livePlan() {
   }
   return { plan, run, out };
 }
-// keep the first plan once today's training starts (called just before the first set or run of today is saved)
-function freezePlan(ex, act) {
-  const t = dayKey(); if ((S.daily[t] || {}).plan || workedToday().length || actsToday().length) return;
-  if (act && !isRun(act)) { S.daily[t] = Object.assign(S.daily[t] || {}, { plan: { ex: [], run: false, acts: [act.t] } }); return; }   // a swim or a match is the first workout
-  const live = livePlan(), exs = live.plan.map(o => o.ex);
-  if (ex && !exs.includes(ex)) { const i = exs.findIndex(x => AREA_OF[x] === AREA_OF[ex]); if (i >= 0) exs[i] = ex; else exs.push(ex); }   // you picked a different one: swap it in
-  S.daily[t] = Object.assign(S.daily[t] || {}, { plan: { ex: exs, run: !!live.run || !!(act && isRun(act)), acts: act ? [act.t] : [] } });
+// ---------- rounds: today's workouts, one after another, as many as you want ----------
+// Round 1 is planned from how you were before today. A round starts when its first set or activity is logged and is
+// then kept in S.daily[day].rounds = [{ kind, ex, run, acts, back, t0 }]: sets count toward the round they were logged
+// in (from its t0 until the next round's), activities by their start time listed in acts. When a round is done, the
+// next one is planned from how fresh you are now: exercises not done today first, then 2 lighter back-off sets of what
+// still has something left, then easy groove sets, then an easy walk.
+const KEEP = r => ({ kind: r.kind || "plan", ex: r.ex || [], run: r.run === true ? "last" : r.run || false, acts: r.acts || [], back: r.back || [], t0: r.t0 });
+function rounds() {
+  const t = dayKey(), dly = S.daily[t] || {}, start = keyToDate(t).getTime();
+  if (dly.plan && !dly.rounds) { dly.rounds = [KEEP({ ...dly.plan, t0: start })]; delete dly.plan; S.daily[t] = dly; save(); }   // from before rounds
+  if (!dly.rounds) {   // trained today before rounds were kept: what you did is round 1
+    const worked = workedToday(), acts = actsToday();
+    if (!worked.length && !acts.length) return [];
+    S.daily[t] = Object.assign(dly, { rounds: [KEEP({ ex: [...new Set(worked.map(s => s.ex))], run: acts.some(isRun), acts: acts.map(r => r.t), t0: start })] }); save();
+  }
+  // a round with nothing logged in it any more (everything undone) is dropped
+  const rs = S.daily[t].rounds, keep = rs.filter((r, i) => roundLogged(r, rs[i + 1]));
+  if (keep.length !== rs.length) { S.daily[t].rounds = keep; save(); }
+  return S.daily[t].rounds;
 }
-// the first plan as kept; if you trained before it was kept, it's what you did
-function firstPlan() {
-  const t = dayKey(), dly = S.daily[t] || {}, worked = workedToday(), acts = actsToday();
-  if (!worked.length && !acts.length) { if (dly.plan) { delete dly.plan; save(); } return null; }
-  if (!dly.plan) { S.daily[t] = Object.assign(dly, { plan: { ex: [...new Set(worked.map(s => s.ex))], run: acts.some(isRun), acts: acts.map(r => r.t) } }); save(); }
-  return S.daily[t].plan;
+const winOf = (r, next) => [r.t0, next ? next.t0 : Infinity];
+function roundLogged(r, next) {
+  const [a, b] = winOf(r, next);
+  return r.acts.some(t => S.runs.some(x => x.t === t)) || S.sets.some(s => s.t >= a && s.t < b && (r.kind === "groove" ? s.gtg : !s.gtg));
+}
+// everything a round shows: its rows, and whether it's done
+function roundView(r, next, rec) {
+  const win = winOf(r, next), acts = S.runs.filter(x => r.acts.includes(x.t));
+  if (r.kind === "groove") {
+    const G = r.ex.map(x => { const m = MUSCLE_OF[x][0];
+      return { x, m, rec: rec[m], n: S.sets.filter(s => s.ex === x && s.gtg && s.t >= win[0] && s.t < win[1]).length }; });
+    return { r, kind: "groove", G, acts, done: G.every(g => g.n >= 3) };
+  }
+  if (r.kind === "walk" || r.kind === "act") return { r, kind: r.kind, acts, done: acts.length > 0 };
+  const plan = r.ex.map(x => { const o = exInfo(x, rec, win); return r.back.includes(x) ? Object.assign(o, backOff(x)) : o; });
+  const l = lastRunOf(), run = !r.run ? null : acts.some(isRun) ? { done: true } : r.run === "last" && l ? { d: daysSince(dayKey(l.t)), last: l } : { easy: true };
+  return { r, kind: "plan", plan, run, acts: acts.filter(x => !isRun(x)), done: plan.every(o => o.doneN >= o.planned) && (!run || run.done) };
+}
+// back-off: 2 sets at about 70% of today's target reps, same load
+function backOff(ex) { const sg = suggest(ex, true); return { back: true, planned: 2, reps: Math.max(1, Math.round(sg.reps * .7)), kg: sg.kg, v: sg.v }; }
+// the next round, planned now (exclude: exercises an open round already has)
+function proposal(exclude = []) {
+  if (!rounds().length) { const lp = livePlan(); return { kind: "plan", ...lp }; }
+  const rec = recovery(), done = [...new Set(workedToday().map(s => s.ex))];
+  const fresh = pickPlan(rec, done.concat(exclude)), plan = fresh.plan.map(o => Object.assign(o, { doneN: 0 }));
+  const run = !ranToday() && !exclude.includes("run") && runsOf4w().length && Math.min(rec.quads, rec.calves) >= 60 ? { easy: true } : null;
+  if (plan.length || run) return { kind: "plan", plan, run, out: fresh.out };
+  // back-off is judged on the exercise's main muscle (lats for pull-ups, chest for push-ups...): a shared helper like the arms
+  // shouldn't rule out both pull-ups and push-ups
+  const back = done.filter(x => !exclude.includes(x)).map(x => { const o = exInfo(x, rec, [Date.now(), Infinity]), m = MUSCLE_OF[x][0]; return Object.assign(o, { m, rec: rec[m] }); })
+    .filter(o => o.rec >= 35).sort((a, b) => b.rec - a.rec).slice(0, 2);
+  if (back.length) return { kind: "plan", plan: back.map(o => Object.assign(o, backOff(o.ex))), run: null, out: [], backoff: true };
+  const G = ["pullup", "pushup", "kneeraise", "legraise"].filter(x => !exclude.includes(x)).map(x => { const m = MUSCLE_OF[x][0]; return { x, m, rec: rec[m], n: 0 }; })   // main muscle, as for back-off
+    .filter(g => g.rec >= 20).sort((a, b) => b.rec - a.rec).slice(0, 2);
+  return G.length ? { kind: "groove", G } : { kind: "walk" };
+}
+const openRound = () => { const rs = rounds(), last = rs[rs.length - 1]; return last && !roundView(last, null, recovery()).done ? last : null; };
+// called just before a set or an activity of today is saved: start a round, or add to the open one
+function startRound(ex, act, gtg, at) {   // at: the set's own time, so the set that starts a round counts in it
+  const t = dayKey(), now = act ? act.t : at, rs = rounds(), open = openRound();
+  if (open) {
+    if (act) open.acts.push(act.t);
+    else if (!gtg && open.kind === "plan" && !open.ex.includes(ex)) open.ex.push(ex);   // off-plan: it joins this round
+    return;
+  }
+  const p = proposal(), t0 = Math.max(now, rs.length ? rs[rs.length - 1].t0 + 1 : 0);
+  let r;
+  if (gtg) { if (p.kind !== "groove" || !p.G.some(g => g.x === ex)) return; r = { kind: "groove", ex: p.G.map(g => g.x) }; }   // only a planned groove set starts a groove round
+  else if (act) r = p.kind === "walk" ? { kind: "walk", acts: [act.t] } : isRun(act) && p.kind === "plan" && p.run ? { kind: "plan", ex: p.plan.map(o => o.ex), run: p.run.easy ? "easy" : "last", acts: [act.t], back: p.plan.filter(o => o.back).map(o => o.ex) } : { kind: "act", acts: [act.t] };
+  else if (p.kind === "plan") {
+    const exs = p.plan.map(o => o.ex), back = p.plan.filter(o => o.back).map(o => o.ex);
+    if (!exs.includes(ex)) { const i = exs.findIndex(x => AREA_OF[x] === AREA_OF[ex] && !back.includes(x)); if (i >= 0) exs[i] = ex; else exs.push(ex); }   // you picked a different one: swap it in
+    r = { kind: "plan", ex: exs, run: p.run ? (p.run.easy ? "easy" : "last") : false, back };
+  } else r = { kind: "plan", ex: [ex] };
+  S.daily[t] = Object.assign(S.daily[t] || {}, { rounds: rs.concat([KEEP({ ...r, t0 })]) });
+}
+// in the log sheet: the target from the open round (a back-off round lowers it)
+function roundTarget(ex) {
+  if (logDay) return null;
+  const o = openRound();
+  if (!o) { const p = proposal(); return p.kind === "plan" && p.backoff && p.plan.some(x => x.ex === ex) ? { ...backOff(ex), n: 0 } : null; }   // offered, not started yet
+  if (!o.back.includes(ex)) return null;
+  const win = winOf(o, null);
+  return { ...backOff(ex), n: S.sets.filter(s => s.ex === ex && !s.gtg && s.t >= win[0] && s.t < win[1]).length };
 }
 const why = o => o.d === null ? "New for you" : o.d === 0 ? "Earlier today" : `${cap(agoText(o.d))}${o.due >= 1.3 ? " · overdue" : ""}`;
 function planRow(o) {
   const sg = suggest(o.ex, true), done = o.doneN >= o.planned;
+  const txt = o.back ? `${o.planned} × ${o.reps}${loadText(o.ex, o.kg, o.v)} · back-off` : sg.text.replace(/^(Next|Start): /, "");
   return `<button class="plrow${done ? " done" : ""}" data-ex="${o.ex}"><span class="plck" aria-hidden="true">${done ? "✓" : o.doneN ? `${o.doneN}/${o.planned}` : ""}</span>
-    <span class="plt"><b>${EX[o.ex].name}</b><span class="pln${sg.kind === "down" ? " down" : ""}">${esc(sg.text.replace(/^(Next|Start): /, ""))}</span></span>
+    <span class="plt"><b>${EX[o.ex].name}</b><span class="pln${sg.kind === "down" && !o.back ? " down" : ""}">${esc(txt)}</span></span>
     ${done ? `<span class="plw">${o.doneN} set${o.doneN === 1 ? "" : "s"}</span>` : `<span class="plw">${why(o)}<br><span style="color:${recColor(o.rec)}">${MUSCLES[o.m].name.split(" ")[0]} ${o.rec}%</span></span>`}</button>`;
 }
 function runRowP(run) {
@@ -696,66 +766,62 @@ function goBtn(plan, run) {
   if (run && !run.done) return `<button class="big primary plgo" data-run-add>Add the run</button>`;
   return "";
 }
-// the data behind the two workout cards (also sent to the home-screen widget)
-function firstData() {
-  const p1 = firstPlan();
-  if (!p1) { const { plan, run, out } = livePlan(); return { p1, plan, run, out, acts: [], done: false }; }
-  const rec0 = recovery(keyToDate(dayKey()).getTime()), plan = p1.ex.map(x => exInfo(x, rec0));
-  const run = p1.run ? (ranToday() ? { done: true } : (() => { const l = lastRunOf(); return l ? { d: daysSince(dayKey(l.t)), last: l } : { easy: true }; })()) : null;
-  const acts = actsToday().filter(r => (p1.acts || []).includes(r.t) && !isRun(r));
-  return { p1, plan, run, out: [], acts, done: plan.every(o => o.doneN >= o.planned) && (!run || run.done) };
+// the cards: done rounds as a short list, then the open round (or the next one, planned), then a peek at what follows
+const roundName = i => i === 0 ? "Today's workout" : `Workout ${i + 1}`;
+function roundSummary(v, i) {
+  const names = v.kind === "groove" ? v.G.map(g => (EX[g.x].short || EX[g.x].name) + " groove") : v.kind === "plan" ? v.plan.map(o => EX[o.ex].short || EX[o.ex].name) : [];
+  for (const a of v.acts) names.push(cap(KIND[a.sport] || "activity"));
+  if (v.kind === "plan" && v.run && v.run.done && !v.acts.some(isRun)) names.push("Run");
+  return `<div class="rdone"><span class="plck" aria-hidden="true">✓</span><b>${roundName(i)}</b><span>${esc(names.join(" · ") || "done")}</span></div>`;
 }
-// the second workout: what the first one left out, judged on how fresh you are now (not counting this second workout yet)
-function nextData(p1) {
-  const t = dayKey(), rec = recovery(Infinity, s => dayKey(s.t) === t && (s.ex ? !s.gtg && !p1.ex.includes(s.ex) : p1.acts ? !p1.acts.includes(s.t) : !p1.run));
-  const later = actsToday().filter(r => p1.acts ? !p1.acts.includes(r.t) : !p1.run);   // done since the first workout
-  const { plan, out } = pickPlan(rec, p1.ex);
-  let run = null;
-  if (!p1.run) {
-    if (later.some(isRun)) run = { done: true };
-    else if (runsOf4w().length && Math.min(rec.quads, rec.calves) >= 60) run = { easy: true };
-  }
-  if (plan.length || run) return { kind: "plan", plan, run, out, acts: later.filter(r => !isRun(r)) };
-  // nothing fresh enough for working sets: easy groove sets on whatever has the most left (they don't count toward progression)
-  const now = recovery(), G = ["pullup", "pushup", "kneeraise", "legraise"].map(x => {
-    const m = MUSCLE_OF[x].reduce((a, b) => now[b] < now[a] ? b : a);
-    return { x, m, rec: now[m], n: S.sets.filter(s => s.ex === x && s.gtg && dayKey(s.t) === t).length };
-  }).filter(g => g.rec >= 20).sort((a, b) => b.rec - a.rec).slice(0, 2);
-  return G.length ? { kind: "groove", G } : { kind: "walk" };
+function groovRows(G) {
+  return G.map(g => `<button class="plrow${g.n >= 3 ? " done" : ""}" data-quick="${g.x}"><span class="plck" aria-hidden="true">${g.n >= 3 ? "✓" : g.n ? `${g.n}/3` : ""}</span>
+      <span class="plt"><b>${EX[g.x].name}</b><span class="pln">3 × ${S.settings.gtg[g.x]}${gtgKg(g.x) ? ` +${fmtKg(gtgKg(g.x))} kg` : ""}, easy</span></span>
+      <span class="plw">Groove<br><span style="color:${recColor(g.rec)}">${MUSCLES[g.m].name.split(" ")[0]} ${g.rec}%</span></span></button>`).join("");
 }
+const walkRow = `<button class="plrow run" data-run-add><span class="plck" aria-hidden="true"></span><span class="plt"><b>Easy walk</b><span class="pln">20–30 min, easy pace</span></span><span class="plw">Recovery</span></button>`;
+function sizeOf(p) {
+  if (p.kind === "groove") return "easy groove sets";
+  if (p.kind === "walk") return "easy walk";
+  return [p.plan.length ? `${p.plan.length} exercise${p.plan.length === 1 ? "" : "s"}${p.backoff ? " · back-off" : ""}` : "", p.run && !p.run.done ? (p.run.easy ? "easy run" : "run") : ""].filter(Boolean).join(" · ");
+}
+// one round's card body (rows + the go button); started: it has sets in it, so "Next" not "Start"
+function roundBody(p, started) {
+  if (p.kind === "groove") return `<p class="plsub muted">Every area got its work. Finish with easy groove sets — tap one to log it.</p>${groovRows(p.G)}`;
+  if (p.kind === "walk") return `<p class="plsub muted">Every muscle got real work today. Keep moving without digging deeper:</p>${walkRow}`;
+  if (p.kind === "act") return actRows(p.acts);
+  return `${p.plan.map(planRow).join("")}${runRowP(p.run)}${actRows(p.acts || [])}${goBtn(p.plan, p.run)}`;
+}
+let nextOpen = false;   // the peek at the following round, opened by hand
 function planCard() {
   if (logDay) return "";
-  const f = firstData(), { p1, plan, run, out } = f;
-  if (!p1) {   // not trained yet today
-    if (!plan.length && !run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b>${widgetBtn()}</div>
+  const rs = rounds(), rec = recovery(), views = rs.map((r, i) => roundView(r, rs[i + 1], rec));
+  const last = views[views.length - 1], open = last && !last.done ? last : null;
+  const done = (open ? views.slice(0, -1) : views);
+  let out = done.length ? `<div class="card plan rdlist"><div class="plhead"><b>Done today</b><span class="muted">${done.length} round${done.length === 1 ? "" : "s"}</span>${open ? "" : widgetBtn()}</div>${done.map(roundSummary).join("")}</div>` : "";
+  if (open) {
+    const i = views.length - 1, n = open.kind === "plan" ? open.plan.filter(o => o.doneN >= o.planned).length + (open.run && open.run.done ? 1 : 0) : 0, of = open.kind === "plan" ? open.plan.length + (open.run ? 1 : 0) : 0;
+    out += `<div class="card plan"><div class="plhead"><b>${roundName(i)}</b><span class="muted">${of ? `${n} of ${of} done` : ""}</span>${widgetBtn()}</div>${roundBody(open, true)}</div>`;
+    const p = proposal(open.kind === "plan" ? open.r.ex.concat(open.run ? ["run"] : []) : open.kind === "groove" ? open.r.ex : []);
+    out += nextOpen ? `<div class="card plan plnext"><div class="plhead"><b>${roundName(i + 1)}</b><span class="muted">after this one</span></div>${roundBody(p, false)}</div>`
+      : `<button class="card plan plnext plpeek" data-act="next-open"><span class="plhead"><b>${roundName(i + 1)}</b><span class="muted">${esc(sizeOf(p))}</span><span class="plchev" aria-hidden="true">›</span></span></button>`;
+    return out;
+  }
+  // nothing open: plan the next round now
+  const i = views.length, p = proposal();
+  if (i === 0 && p.kind === "plan" && !p.plan.length && !p.run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b>${widgetBtn()}</div>
       <p class="plrest">Everything is still recovering. Rest today, or take an easy walk.</p></div>`;
-    return `<div class="card plan"><div class="plhead"><b>Today's workout</b><span class="muted">${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${plan.reduce((t, o) => t + o.planned, 0)} sets${run ? " · run" : ""}</span>${widgetBtn()}</div>
-      <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 && out[0] !== "legs" ? "s" : ""} today.` : ""}</p>
-      ${plan.map(planRow).join("")}${runRowP(run)}${goBtn(plan, run)}</div>`;
-  }
-  // the first workout, as kept
-  const card1 = `<div class="card plan${f.done ? " pldone" : ""}"><div class="plhead"><b>Today's workout</b><span class="muted">${f.done ? "done ✓" : `${plan.filter(o => o.doneN >= o.planned).length + (run && run.done ? 1 : 0)} of ${plan.length + (run ? 1 : 0)} done`}</span>${widgetBtn()}</div>
-    ${plan.map(planRow).join("")}${runRowP(run)}${actRows(f.acts)}${f.done ? "" : goBtn(plan, run)}</div>`;
-  return card1 + nextCard(p1, f.done);
+  const sub = i === 0 ? `From your last 4 weeks: what's due, and what's fresh.${p.out && p.out.length ? ` ${cap(p.out.join(" and "))} rest${p.out.length === 1 && p.out[0] !== "legs" ? "s" : ""} today.` : ""}`
+    : p.kind !== "plan" ? "" : p.backoff ? "Every area has had a turn today. Two lighter back-off sets of what still has something left."
+    : `What's still fresh after ${i === 1 ? "your first workout" : `${i} rounds`}.${p.out && p.out.length ? ` ${cap(p.out.join(" and "))} need${p.out.length === 1 && p.out[0] !== "legs" ? "s" : ""} the rest.` : ""}`;
+  return out + `<div class="card plan${i ? " plnext" : ""}"><div class="plhead"><b>${roundName(i)}</b><span class="muted">${i ? "if you're up for it" : esc(sizeOf(p))}</span>${done.length ? "" : widgetBtn()}</div>
+    ${sub ? `<p class="plsub muted">${sub}</p>` : ""}${roundBody(p, false)}</div>`;
 }
-let nextOpen = false;   // the next-workout card, opened by hand before the first workout is done
-function nextCard(p1, firstDone) {
-  const n = nextData(p1), t = dayKey(), open = firstDone || nextOpen;
-  const size = n.kind === "plan" ? [n.plan.length ? `${n.plan.length} exercise${n.plan.length === 1 ? "" : "s"}` : "", n.run && !n.run.done ? "easy run" : ""].filter(Boolean).join(" · ") : n.kind === "groove" ? "easy groove sets" : "easy walk";
-  if (!open) return `<button class="card plan plnext plpeek" data-act="next-open"><span class="plhead"><b>Next workout</b><span class="muted">${esc(size)}</span><span class="plchev" aria-hidden="true">›</span></span></button>`;
-  const head = `<div class="card plan plnext"><div class="plhead"><b>Next workout</b><span class="muted">if you're up for it</span></div>`;
-  if (n.kind === "plan") {
-    const { plan, run, out } = n, sets = plan.reduce((t, o) => t + o.planned, 0);
-    return `${head}<p class="plsub muted">${plan.length ? `${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets` : ""}${plan.length && run ? " · " : ""}${run ? (run.done ? "run done" : "easy run") : ""}. What your first workout left fresh.${out.length ? ` ${cap(out.join(" and "))} need${out.length === 1 && out[0] !== "legs" ? "s" : ""} the rest.` : ""}</p>
-      ${plan.map(planRow).join("")}${runRowP(run)}${actRows(n.acts)}${goBtn(plan, run)}</div>`;
-  }
-  if (n.kind === "walk") return `${head}<p class="plsub muted">Every muscle got real work today. Keep moving without digging deeper:</p>
-    <button class="plrow run" data-run-add><span class="plck" aria-hidden="true"></span><span class="plt"><b>Easy walk</b><span class="pln">20–30 min, easy pace</span></span>
-    <span class="plw">Recovery</span></button></div>`;
-  return `${head}<p class="plsub muted">Every area got its work. Finish with a few easy groove sets — tap to log one.</p>
-    ${n.G.map(g => `<button class="plrow${g.n >= 3 ? " done" : ""}" data-quick="${g.x}"><span class="plck" aria-hidden="true">${g.n >= 3 ? "✓" : g.n ? `${g.n}/3` : ""}</span>
-      <span class="plt"><b>${EX[g.x].name}</b><span class="pln">3 × ${S.settings.gtg[g.x]}${gtgKg(g.x) ? ` +${fmtKg(gtgKg(g.x))} kg` : ""}, easy</span></span>
-      <span class="plw">Groove<br><span style="color:${recColor(g.rec)}">${MUSCLES[g.m].name.split(" ")[0]} ${g.rec}%</span></span></button>`).join("")}</div>`;
+// for the widget: the round to do now, and the one after it
+function widgetRounds() {
+  const rs = rounds(), rec = recovery(), views = rs.map((r, i) => roundView(r, rs[i + 1], rec)), last = views[views.length - 1];
+  if (last && !last.done) return { i: views.length - 1, now: last, started: true, after: proposal(last.kind === "plan" ? last.r.ex.concat(last.run ? ["run"] : []) : last.r.ex || []) };
+  return { i: views.length, now: proposal(), started: false, after: null, doneRounds: views.length };
 }
 
 // ---------- home-screen widget (Scriptable) ----------
@@ -765,22 +831,19 @@ const WIDGET_SCRIPT = "Unbowed";
 function widgetPayload() {
   const info = streakInfo(), today = dayKey(), r = rankOf(info.n), done = info.status[today] === "on";
   const tmrw = addDays(today, 1);
-  const exRow = o => { const sg = suggest(o.ex, true); return { n: EX[o.ex].short || EX[o.ex].name, t: sg.text.replace(/^(Next|Start|Hold or step back|Hold): /, ""), s: o.doneN >= o.planned ? 2 : o.doneN ? 1 : 0, p: o.doneN ? `${Math.min(o.doneN, o.planned)}/${o.planned}` : "" }; };
+  const exRow = o => { const sg = suggest(o.ex, true); return { n: EX[o.ex].short || EX[o.ex].name, t: o.back ? `${o.planned} × ${o.reps} back-off` : sg.text.replace(/^(Next|Start|Hold or step back|Hold): /, ""), s: o.doneN >= o.planned ? 2 : o.doneN ? 1 : 0, p: o.doneN ? `${Math.min(o.doneN, o.planned)}/${o.planned}` : "" }; };
   const runRow = run => run && { n: run.easy ? "Easy run" : "Run", t: run.done ? "Done" : run.easy ? "20–30 min, easy" : (run.last.dist ? fmtKm(run.last.dist) + " km" : fmtDur(run.last.dur)), s: run.done ? 2 : 0 };
   const actRow = a => ({ n: cap(KIND[a.sport] || "activity"), t: (a.dist ? fmtDist(a) + " · " : "") + fmtDur(a.dur), s: 2 });
-  const f = firstData(), items = f.plan.map(exRow).concat(f.run ? [runRow(f.run)] : [], f.acts.map(actRow));
-  let next = null;
-  if (f.p1) {
-    const n = nextData(f.p1);
-    next = n.kind === "plan" ? n.plan.map(exRow).concat(n.run ? [runRow(n.run)] : [], n.acts.map(actRow))
-      : n.kind === "groove" ? n.G.map(g => ({ n: EX[g.x].short || EX[g.x].name, t: `3 × ${S.settings.gtg[g.x]} easy groove`, s: g.n >= 3 ? 2 : g.n ? 1 : 0, p: g.n ? `${Math.min(g.n, 3)}/3` : "" }))
-      : [{ n: "Easy walk", t: "20–30 min", s: 0 }];
-  }
+  const rowsOf = p => !p ? null : p.kind === "plan" ? p.plan.map(exRow).concat(p.run ? [runRow(p.run)] : [], (p.acts || []).filter(a => !isRun(a)).map(actRow))
+    : p.kind === "groove" ? p.G.map(g => ({ n: EX[g.x].short || EX[g.x].name, t: `3 × ${S.settings.gtg[g.x]} easy groove`, s: g.n >= 3 ? 2 : g.n ? 1 : 0, p: g.n ? `${Math.min(g.n, 3)}/3` : "" }))
+    : p.kind === "act" ? (p.acts || []).map(actRow) : [{ n: "Easy walk", t: "20–30 min", s: 0 }];
+  const w = widgetRounds(), items = rowsOf(w.now), next = rowsOf(w.after);
   const rec = recovery(), ready = Math.round(Object.keys(MUSCLES).reduce((t, m) => t + rec[m], 0) / Object.keys(MUSCLES).length);
   return { v: 1, d: today, at: Date.now(), n: info.n, best: info.best, rank: r.name, ready, img: widgetFigure(),
     next: r.next && info.n ? { name: r.next[1], in: r.next[0] - info.n - (done ? 0 : 1) } : null,
     done, restOk: info.restOk, restTmrw: done && info.n > 0 && (!info.lastRest || addDays(info.lastRest, 7) <= tmrw),
-    first: { started: !!f.p1, done: f.done, rest: !f.plan.length && !f.run && !f.acts.length, items }, second: next };
+    first: { title: roundName(w.i), started: w.started, done: false, rest: w.i === 0 && w.now.kind === "plan" && !w.now.plan.length && !w.now.run, items }, second: next,
+    rounds: w.started ? w.i : w.i };
 }
 // the figure as the app shows it (muscles lit by how recently they were trained), on the widget's dark background
 function widgetFigure() {
