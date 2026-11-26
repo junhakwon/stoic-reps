@@ -85,7 +85,6 @@ const QUOTES = [
   { k: "spirit", a: "Thomas Wayne", s: "Batman Begins (2005)", th: "adversity", q: "Why do we fall, Bruce? So we can learn to pick ourselves up." },
   { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "discipline", q: "Training is nothing! Will is everything! The will to act." },
   { k: "spirit", a: "Bruce Wayne", s: "Batman Begins (2005)", th: "character", q: "It’s not who I am underneath, but what I do that defines me." },
-  { k: "spirit", a: "Harvey Dent", s: "The Dark Knight (2008)", th: "adversity", q: "The night is darkest just before the dawn." },
   { k: "spirit", a: "Alfred Pennyworth", s: "The Dark Knight (2008)", th: "adversity", q: "Endure, Master Wayne. Take it." },
   { k: "spirit", a: "Maximus", s: "Gladiator (2000)", th: "time", q: "What we do in life echoes in eternity." },
   { k: "spirit", a: "Rocky Balboa", s: "Rocky Balboa (2006)", th: "adversity", q: "It ain’t about how hard you hit. It’s about how hard you can get hit and keep moving forward." },
@@ -107,12 +106,12 @@ const QUOTES = [
   { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "discipline", q: "Death does not wait for you to be ready!" },
   { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "self-mastery", q: "To conquer fear, you must become fear." },
   { k: "spirit", a: "Alfred and Bruce Wayne", s: "The Dark Knight (2008)", th: "self-mastery", q: "“Know your limits, Master Wayne.” “Batman has no limits.” “Well, you do, sir.”" },
-  { k: "spirit", a: "Harvey Dent", s: "The Dark Knight (2008)", th: "character", q: "You either die a hero, or you live long enough to see yourself become the villain." },
   { k: "spirit", a: "Jim Gordon", s: "The Dark Knight (2008)", th: "character", q: "He’s a silent guardian, a watchful protector. A dark knight." },
-  { k: "spirit", a: "Bane", s: "The Dark Knight Rises (2012)", th: "discipline", q: "Peace has cost you your strength. Victory has defeated you." },
-  { k: "spirit", a: "Bane", s: "The Dark Knight Rises (2012)", th: "adversity", q: "You merely adopted the dark. I was born in it, molded by it." },
   { k: "spirit", a: "The blind prisoner", s: "The Dark Knight Rises (2012)", th: "effort", q: "You do not fear death. You think this makes you strong. It makes you weak." },
   { k: "spirit", a: "The blind prisoner", s: "The Dark Knight Rises (2012)", th: "effort", q: "Then make the climb." },
   { k: "spirit", a: "Batman", s: "The Dark Knight Rises (2012)", th: "character", q: "The idea was to be a symbol. Batman could be anybody. That was the point." },
 ];
-QUOTES.forEach((x, i) => { x.id = i; });
+// ids are kept for good (favourites and the quote of the day are saved by id): a removed quote's id is retired, never reused
+const RETIRED_IDS = [74, 95, 97, 98];   // Harvey Dent and Bane lines, taken out
+{ let n = 0; for (const x of QUOTES) { while (RETIRED_IDS.includes(n)) n++; x.id = n++; } }
+const QUOTE_BY_ID = {}; for (const x of QUOTES) QUOTE_BY_ID[x.id] = x;

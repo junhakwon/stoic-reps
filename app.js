@@ -160,13 +160,13 @@ function hash(str) { let h = 2166136261; for (const c of str) h = Math.imul(h ^ 
 function quoteOfDay() {
   // one quote per day; once you have trained that day it switches to a discipline or effort quote
   const d = dayKey(), trained = activeDays().has(d);
-  const stale = !S.qotd || S.qotd.d !== d || !QUOTES[S.qotd.id] || (trained && !TRAIN_THEMES.includes(QUOTES[S.qotd.id].th));
+  const stale = !S.qotd || S.qotd.d !== d || !QUOTE_BY_ID[S.qotd.id] || (trained && !TRAIN_THEMES.includes(QUOTE_BY_ID[S.qotd.id].th));
   if (stale) {
     let pool = trained ? QUOTES.filter(q => TRAIN_THEMES.includes(q.th)) : QUOTES;
     pool = spiritMix(pool, hash(d + "k") % 100 < SPIRIT_PCT);
     S.qotd = { d, id: pool[hash(d) % pool.length].id }; save();
   }
-  return QUOTES[S.qotd.id];
+  return QUOTE_BY_ID[S.qotd.id];
 }
 // about 40% of quotes come from the ones in the Stoic spirit (films, poems, speeches), the rest from the Stoics
 const SPIRIT_PCT = 40;
@@ -1108,7 +1108,7 @@ function progressView() {
 function moreView() {
   const st = S.settings, today = dayKey();
   const bwRows = Object.keys(S.body).sort().slice(-5).reverse().map(d => `<div class="item"><span>${d}</span><b>${fmtKg(S.body[d])} kg</b></div>`).join("");
-  const favs = S.favs.map(id => QUOTES[id]).filter(Boolean).map(quoteCard).join("") || '<p class="muted">Tap ♡ on any quote to keep it here.</p>';
+  const favs = S.favs.map(id => QUOTE_BY_ID[id]).filter(Boolean).map(quoteCard).join("") || '<p class="muted">Tap ♡ on any quote to keep it here.</p>';
   const r = st.ranges;
   const rangeRow = (label, key, a) => `<div class="inrow"><label>${label}</label><input type="number" inputmode="numeric" data-range="${key}:0" value="${a[0]}"> – <input type="number" inputmode="numeric" data-range="${key}:1" value="${a[1]}"></div>`;
   const goalRows = S.goals.map(g => `<div class="item"><span>${esc(g.label)}</span><button class="small-btn" data-goal-del="${g.id}">Remove</button></div>`).join("");
