@@ -12,3 +12,6 @@ All data stays on the device (localStorage). Use More → Backup to export/impor
 Quotes are checked word for word against public-domain translations: Marcus Aurelius and Epictetus (tr. George Long),
 Seneca (tr. Richard M. Gummere). About 40% of quotes are in the Stoic spirit instead: the Dark Knight trilogy, Rocky, Roosevelt,
 Invictus, Kipling, Shakespeare, Frankl and others (see quotes.js for sources).
+
+Home-screen widget: iPhone doesn't let web apps make widgets, so `widget/unbowed-widget.js` is a script for the free
+Scriptable app. Unbowed hands it your streak and today's workout when you tap ⇪ Widget (More → Home-screen widget has the setup).

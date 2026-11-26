@@ -265,7 +265,7 @@ function doneCard(ex) {
   const reps = arr => arr.reduce((t, s) => t + s.reps, 0);
   $("#modal-body").innerHTML = `<div class="pr-card">${clip("land", "fxclip loop")}<h2>${EX[ex].name} done</h2>
     <p>${mine.length} sets · ${reps(mine)} reps${mine[0] && mine[0].kg ? ` at +${fmtKg(mine[0].kg)} kg` : ""}. Today so far: ${today.length} sets, ${reps(today)} reps.</p></div>
-    ${quoteCard(nextQuote(["discipline", "effort"], true))}<button class="big primary" data-close-modal>Done for now</button>`;
+    ${quoteCard(nextQuote(["discipline", "effort"], true))}${S.settings.widgetOn ? `<button class="big" data-act="widget-send">⇪ Update widget</button>` : ""}<button class="big primary" data-close-modal>Done for now</button>`;
   $("#modal").hidden = false;
 }
 function rankCard(r, n) {
@@ -674,27 +674,17 @@ function goBtn(plan, run) {
   if (run && !run.done) return `<button class="big primary plgo" data-run-add>Add the run</button>`;
   return "";
 }
-function planCard() {
-  if (logDay) return "";
+// the data behind the two workout cards (also sent to the home-screen widget)
+function firstData() {
   const p1 = firstPlan();
-  if (!p1) {   // not trained yet today
-    const { plan, run, out } = livePlan();
-    if (!plan.length && !run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b></div>
-      <p class="plrest">Everything is still recovering. Rest today, or take an easy walk.</p></div>`;
-    return `<div class="card plan"><div class="plhead"><b>Today's workout</b><span class="muted">${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${plan.reduce((t, o) => t + o.planned, 0)} sets${run ? " · run" : ""}</span></div>
-      <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 && out[0] !== "legs" ? "s" : ""} today.` : ""}</p>
-      ${plan.map(planRow).join("")}${runRowP(run)}${goBtn(plan, run)}</div>`;
-  }
-  // the first workout, as kept
+  if (!p1) { const { plan, run, out } = livePlan(); return { p1, plan, run, out, acts: [], done: false }; }
   const rec0 = recovery(keyToDate(dayKey()).getTime()), plan = p1.ex.map(x => exInfo(x, rec0));
-  const run1 = p1.run ? (ranToday() ? { done: true } : (() => { const l = lastRunOf(); return l ? { d: daysSince(dayKey(l.t)), last: l } : { easy: true }; })()) : null;
-  const done1 = plan.every(o => o.doneN >= o.planned) && (!run1 || run1.done);
-  const card1 = `<div class="card plan${done1 ? " pldone" : ""}"><div class="plhead"><b>Today's workout</b><span class="muted">${done1 ? "done ✓" : `${plan.filter(o => o.doneN >= o.planned).length + (run1 && run1.done ? 1 : 0)} of ${plan.length + (run1 ? 1 : 0)} done`}</span></div>
-    ${plan.map(planRow).join("")}${runRowP(run1)}${actRows(actsToday().filter(r => (p1.acts || []).includes(r.t)))}${done1 ? "" : goBtn(plan, run1)}</div>`;
-  return card1 + nextCard(p1);
+  const run = p1.run ? (ranToday() ? { done: true } : (() => { const l = lastRunOf(); return l ? { d: daysSince(dayKey(l.t)), last: l } : { easy: true }; })()) : null;
+  const acts = actsToday().filter(r => (p1.acts || []).includes(r.t) && !isRun(r));
+  return { p1, plan, run, out: [], acts, done: plan.every(o => o.doneN >= o.planned) && (!run || run.done) };
 }
 // the second workout: what the first one left out, judged on how fresh you are now (not counting this second workout yet)
-function nextCard(p1) {
+function nextData(p1) {
   const t = dayKey(), rec = recovery(Infinity, s => dayKey(s.t) === t && (s.ex ? !s.gtg && !p1.ex.includes(s.ex) : p1.acts ? !p1.acts.includes(s.t) : !p1.run));
   const later = actsToday().filter(r => p1.acts ? !p1.acts.includes(r.t) : !p1.run);   // done since the first workout
   const { plan, out } = pickPlan(rec, p1.ex);
@@ -703,25 +693,104 @@ function nextCard(p1) {
     if (later.some(isRun)) run = { done: true };
     else if (runsOf4w().length && Math.min(rec.quads, rec.calves) >= 60) run = { easy: true };
   }
-  const head = `<div class="card plan plnext"><div class="plhead"><b>Next workout</b><span class="muted">if you're up for it</span></div>`;
-  if (plan.length || run) {
-    const sets = plan.reduce((t, o) => t + o.planned, 0);
-    return `${head}<p class="plsub muted">${plan.length ? `${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets` : ""}${plan.length && run ? " · " : ""}${run ? (run.done ? "run done" : "easy run") : ""}. What your first workout left fresh.${out.length ? ` ${cap(out.join(" and "))} need${out.length === 1 && out[0] !== "legs" ? "s" : ""} the rest.` : ""}</p>
-      ${plan.map(planRow).join("")}${runRowP(run)}${actRows(later)}${goBtn(plan, run)}</div>`;
-  }
+  if (plan.length || run) return { kind: "plan", plan, run, out, acts: later.filter(r => !isRun(r)) };
   // nothing fresh enough for working sets: easy groove sets on whatever has the most left (they don't count toward progression)
   const now = recovery(), G = ["pullup", "pushup", "kneeraise", "legraise"].map(x => {
     const m = MUSCLE_OF[x].reduce((a, b) => now[b] < now[a] ? b : a);
     return { x, m, rec: now[m], n: S.sets.filter(s => s.ex === x && s.gtg && dayKey(s.t) === t).length };
   }).filter(g => g.rec >= 20).sort((a, b) => b.rec - a.rec).slice(0, 2);
-  if (!G.length) return `${head}<p class="plsub muted">Every muscle got real work today. Keep moving without digging deeper:</p>
+  return G.length ? { kind: "groove", G } : { kind: "walk" };
+}
+function planCard() {
+  if (logDay) return "";
+  const f = firstData(), { p1, plan, run, out } = f;
+  if (!p1) {   // not trained yet today
+    if (!plan.length && !run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b>${widgetBtn()}</div>
+      <p class="plrest">Everything is still recovering. Rest today, or take an easy walk.</p></div>`;
+    return `<div class="card plan"><div class="plhead"><b>Today's workout</b><span class="muted">${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${plan.reduce((t, o) => t + o.planned, 0)} sets${run ? " · run" : ""}</span>${widgetBtn()}</div>
+      <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 && out[0] !== "legs" ? "s" : ""} today.` : ""}</p>
+      ${plan.map(planRow).join("")}${runRowP(run)}${goBtn(plan, run)}</div>`;
+  }
+  // the first workout, as kept
+  const card1 = `<div class="card plan${f.done ? " pldone" : ""}"><div class="plhead"><b>Today's workout</b><span class="muted">${f.done ? "done ✓" : `${plan.filter(o => o.doneN >= o.planned).length + (run && run.done ? 1 : 0)} of ${plan.length + (run ? 1 : 0)} done`}</span>${widgetBtn()}</div>
+    ${plan.map(planRow).join("")}${runRowP(run)}${actRows(f.acts)}${f.done ? "" : goBtn(plan, run)}</div>`;
+  return card1 + nextCard(p1);
+}
+function nextCard(p1) {
+  const n = nextData(p1), t = dayKey();
+  const head = `<div class="card plan plnext"><div class="plhead"><b>Next workout</b><span class="muted">if you're up for it</span></div>`;
+  if (n.kind === "plan") {
+    const { plan, run, out } = n, sets = plan.reduce((t, o) => t + o.planned, 0);
+    return `${head}<p class="plsub muted">${plan.length ? `${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets` : ""}${plan.length && run ? " · " : ""}${run ? (run.done ? "run done" : "easy run") : ""}. What your first workout left fresh.${out.length ? ` ${cap(out.join(" and "))} need${out.length === 1 && out[0] !== "legs" ? "s" : ""} the rest.` : ""}</p>
+      ${plan.map(planRow).join("")}${runRowP(run)}${actRows(n.acts)}${goBtn(plan, run)}</div>`;
+  }
+  if (n.kind === "walk") return `${head}<p class="plsub muted">Every muscle got real work today. Keep moving without digging deeper:</p>
     <button class="plrow run" data-run-add><span class="plck" aria-hidden="true"></span><span class="plt"><b>Easy walk</b><span class="pln">20–30 min, easy pace</span></span>
     <span class="plw">Recovery</span></button></div>`;
   return `${head}<p class="plsub muted">Every area got its work. Finish with a few easy groove sets — tap to log one.</p>
-    ${G.map(g => `<button class="plrow${g.n >= 3 ? " done" : ""}" data-quick="${g.x}"><span class="plck" aria-hidden="true">${g.n >= 3 ? "✓" : g.n ? `${g.n}/3` : ""}</span>
+    ${n.G.map(g => `<button class="plrow${g.n >= 3 ? " done" : ""}" data-quick="${g.x}"><span class="plck" aria-hidden="true">${g.n >= 3 ? "✓" : g.n ? `${g.n}/3` : ""}</span>
       <span class="plt"><b>${EX[g.x].name}</b><span class="pln">3 × ${S.settings.gtg[g.x]}${gtgKg(g.x) ? ` +${fmtKg(gtgKg(g.x))} kg` : ""}, easy</span></span>
       <span class="plw">Groove<br><span style="color:${recColor(g.rec)}">${MUSCLES[g.m].name.split(" ")[0]} ${g.rec}%</span></span></button>`).join("")}</div>`;
 }
+
+// ---------- home-screen widget (Scriptable) ----------
+// A web app can't update an iPhone widget, so Unbowed hands a small summary to a Scriptable script named "Unbowed"
+// (scriptable:///run/Unbowed?data=...), which saves it; the widget shows it. widget/unbowed-widget.js is that script.
+const WIDGET_SCRIPT = "Unbowed";
+function widgetPayload() {
+  const info = streakInfo(), today = dayKey(), r = rankOf(info.n), done = info.status[today] === "on";
+  const tmrw = addDays(today, 1);
+  const exRow = o => { const sg = suggest(o.ex, true); return { n: EX[o.ex].short || EX[o.ex].name, t: sg.text.replace(/^(Next|Start|Hold or step back|Hold): /, ""), s: o.doneN >= o.planned ? 2 : o.doneN ? 1 : 0, p: o.doneN ? `${Math.min(o.doneN, o.planned)}/${o.planned}` : "" }; };
+  const runRow = run => run && { n: run.easy ? "Easy run" : "Run", t: run.done ? "Done" : run.easy ? "20–30 min, easy" : (run.last.dist ? fmtKm(run.last.dist) + " km" : fmtDur(run.last.dur)), s: run.done ? 2 : 0 };
+  const actRow = a => ({ n: cap(KIND[a.sport] || "activity"), t: (a.dist ? fmtDist(a) + " · " : "") + fmtDur(a.dur), s: 2 });
+  const f = firstData(), items = f.plan.map(exRow).concat(f.run ? [runRow(f.run)] : [], f.acts.map(actRow));
+  let next = null;
+  if (f.p1) {
+    const n = nextData(f.p1);
+    next = n.kind === "plan" ? n.plan.map(exRow).concat(n.run ? [runRow(n.run)] : [], n.acts.map(actRow))
+      : n.kind === "groove" ? n.G.map(g => ({ n: EX[g.x].short || EX[g.x].name, t: `3 × ${S.settings.gtg[g.x]} easy groove`, s: g.n >= 3 ? 2 : g.n ? 1 : 0, p: g.n ? `${Math.min(g.n, 3)}/3` : "" }))
+      : [{ n: "Easy walk", t: "20–30 min", s: 0 }];
+  }
+  return { v: 1, d: today, at: Date.now(), n: info.n, best: info.best, rank: r.name,
+    next: r.next && info.n ? { name: r.next[1], in: r.next[0] - info.n - (done ? 0 : 1) } : null,
+    done, restOk: info.restOk, restTmrw: done && info.n > 0 && (!info.lastRest || addDays(info.lastRest, 7) <= tmrw),
+    first: { started: !!f.p1, done: f.done, rest: !f.plan.length && !f.run && !f.acts.length, items }, second: next };
+}
+const widgetBtn = () => S.settings.widgetOn ? `<button class="small-btn wbtn" data-act="widget-send" aria-label="Send to widget">⇪ Widget</button>` : "";
+function sendToWidget() {
+  S.settings.widgetSent = Date.now(); save();
+  const a = document.createElement("a");
+  a.href = `scriptable:///run/${encodeURIComponent(WIDGET_SCRIPT)}?data=${encodeURIComponent(JSON.stringify(widgetPayload()))}`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+// copy the widget script (Safari wants the copy to start inside the tap, so the fetch goes into a ClipboardItem)
+function copyWidgetScript() {
+  const get = () => fetch("widget/unbowed-widget.js", { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(); return r.text(); });
+  const ok = () => { S.settings.widgetOn = true; save(); render(); toast("Widget script copied. Paste it into a new Scriptable script named Unbowed."); };
+  const fail = () => toast("Couldn't copy here. Open the script link below, select all and copy.", true);
+  try {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)
+      navigator.clipboard.write([new ClipboardItem({ "text/plain": get().then(t => new Blob([t], { type: "text/plain" })) })]).then(ok, () => get().then(t => navigator.clipboard.writeText(t)).then(ok, fail));
+    else get().then(t => navigator.clipboard.writeText(t)).then(ok, fail);
+  } catch (e) { fail(); }
+}
+function widgetSection() {
+  const on = S.settings.widgetOn, sent = S.settings.widgetSent;
+  return `<h3>Home-screen widget</h3><div class="card wsetup">
+    <p>Your streak and today's workout on your home screen, through the free <b>Scriptable</b> app.</p>
+    <ol>
+      <li>Install <b>Scriptable</b> from the App Store.</li>
+      <li>Tap <b>Copy widget script</b> below.</li>
+      <li>In Scriptable, tap <b>+</b>, paste, and name the script <b>Unbowed</b> (tap the title at the top).</li>
+      <li>Here, tap <b>Send to widget</b>. Scriptable opens and shows the widget.</li>
+      <li>Long-press your home screen → <b>+</b> → Scriptable → pick a size → long-press the widget → <b>Edit Widget</b> → Script: <b>Unbowed</b>.</li>
+    </ol>
+    <button class="big" data-act="widget-copy">Copy widget script</button>
+    <button class="big ${on ? "primary" : ""}" data-act="widget-send">Send to widget</button>
+    <p class="muted rhelp">The widget updates when you tap <b>⇪ Widget</b> on the Train screen (after training, or in the morning for the day's plan). ${sent ? `Last sent ${agoMin(sent)}.` : ""}
+      Script: <a href="widget/unbowed-widget.js" target="_blank">widget/unbowed-widget.js</a></p></div>`;
+}
+const agoMin = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 // the path: the last 7 days (height = how much you did) and the next 3 if you keep going
 function pathCard() {
   const info = streakInfo(), n = info.n, r = rankOf(n), today = dayKey(), st = info.status;
@@ -1143,6 +1212,7 @@ function moreView() {
       <button class="big" data-act="export">Export data (JSON)</button>
       <button class="big" data-act="import">Import data…</button><input id="imp" type="file" accept="application/json,.json" hidden>
       <p class="muted" style="font-size:14px">Your data lives only on this phone. Export now and then and keep the file in iCloud Drive or Files.</p></div>
+    ${widgetSection()}
     <h3>About the quotes</h3><div class="card muted" style="font-size:14px">${QUOTES.filter(q => !q.k).length} Stoic quotes, each checked word for word against public-domain translations:
       Marcus Aurelius and Epictetus tr. George Long; Seneca tr. Richard M. Gummere. Musonius Rufus is left out because the usual English translation may still be under copyright.
       <br><br>And ${QUOTES.filter(q => q.k === "spirit").length} in the Stoic spirit, from films, poems and speeches: the Dark Knight trilogy, Rocky, Roosevelt's man in the arena, Invictus, Kipling, Shakespeare, Frankl and more.
@@ -1162,6 +1232,8 @@ document.addEventListener("click", e => {
     const keep = ["rn-min", "rn-km", "rn-hr"].map(id => $("#" + id).value), was = handSport; handSport = d.hand; openRunSheet();
     ["rn-min", "rn-km", "rn-hr"].forEach((id, i) => { $("#" + id).value = i === 1 && was !== handSport ? "" : keep[i]; }); return; }
   if (d.act === "run-file") { $("#run-file").click(); return; }
+  if (d.act === "widget-send") { S.settings.widgetOn = true; sendToWidget(); return; }
+  if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "run-save") { saveHandRun(); return; }
   if (d.act === "run-paste") {   // read the shortcut's text from the clipboard; if the phone won't allow it, show a box to paste into
     const box = () => { $("#rn-pastebox").hidden = false; $("#rn-text").focus(); };
