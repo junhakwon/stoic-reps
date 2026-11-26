@@ -574,3 +574,11 @@ h3.sec { margin: 20px 2px 8px; }
 .wcount b { font-size: 28px; font-variant-numeric: tabular-nums; }
 .wcount span { font-size: 13px; color: var(--muted); }
 .wcancel { display: block; margin: 12px auto 0; min-height: 44px; }
+
+/* backup reminder */
+.bkup { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; }
+.bkup > div { flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bkup b { font-size: 15px; }
+.bkup span { font-size: 12px; color: var(--muted); }
+.bkup .small-btn { min-height: 44px; }
+.bkup .link { min-height: 44px; padding: 0 6px; }

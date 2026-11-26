@@ -31,6 +31,7 @@ function defaults() {
       quickEx: "pullup",                           // exercise picked in the quick-add bar                  // rest timer after a working set, seconds (0 = off)
       baseline: { pullup: 17, pushup: 25 },       // bests before the app
       bodyweight: BODYWEIGHT_DEFAULT,
+      backupEvery: 7,                              // days between backup reminders (0 = off)
       maxHr: 0,                                    // for heart-rate zones; 0 = use the highest seen on a run (at least 185)
     },
     goals: [
@@ -580,6 +581,7 @@ function homeView() {
       <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
+    ${backupBanner()}
     ${readyCard(st)}
     ${wodCard()}
     ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
@@ -862,6 +864,59 @@ function wodWidget() {
   return { title: `WOD · ${w.name}`, started: !!d.wodRun, done: finished,
     items: (finished ? [{ n: fmtShort(w), t: wodScore(w, done.filter(x => x.id === w.id).pop().res), s: 2 }] : [{ n: fmtShort(w), t: `~${wodMinutes(w)} min`, s: 0 }])
       .concat(list.map(m => ({ n: moveName(m), t: m[1] ? moveQty(m) : w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : "", s: finished ? 2 : 0 }))) };
+}
+
+// ---------- backup: a full JSON (for Import) + an activities CSV laid out like Garmin Connect's export ----------
+// A web app can't run on a schedule by itself, so "every N days" is a reminder on the Train screen; one tap makes both files
+// and opens the share sheet (Save to Files / iCloud Drive). Where the share sheet can't take files, both download instead.
+const csvCell = v => v == null || v === "" ? "--" : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+const hms = s => { s = Math.max(0, Math.round(s || 0)); return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s % 3600 / 60)) + ":" + pad(s % 60); };
+const gDate = t => { const d = new Date(t); return dayKey(t) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+const G_TYPE = { run: "Running", walk: "Walking", hike: "Hiking", ride: "Cycling", swim: "Pool Swimming", openwater: "Open Water Swimming", soccer: "Soccer", activity: "Other" };
+function activitiesCsv() {
+  const cols = ["Activity Type", "Date", "Favorite", "Title", "Distance", "Calories", "Time", "Avg HR", "Max HR", "Avg Pace", "Total Reps", "Total Sets", "Number of Laps", "Moving Time", "Elapsed Time"];
+  const rows = [];
+  for (const r of S.runs) {
+    const km = r.dist ? r.dist / 1000 : null, sw = /swim|openwater/.test(r.sport || "");
+    rows.push({ t: r.t, v: [G_TYPE[r.sport || "run"] || "Other", gDate(r.t), "false", cap(KIND[r.sport] || r.sport || "run") + (r.src === "hand" ? " (by hand)" : ""),
+      km ? (sw ? Math.round(r.dist) : km.toFixed(2)) : null, r.kcal, hms(r.dur), r.avgHr, r.maxHr,
+      km && !sw ? fmtDur(r.dur / km) : km && sw ? fmtDur(r.dur / (r.dist / 100)) : null, null, null, r.laps || null, hms(r.dur), hms(r.dur)] });
+  }
+  for (const x of S.wods) {
+    const w = WOD_BY[x.id], reps = Object.entries(x.vol || {}).filter(([k]) => k !== "run" && k !== "hang").reduce((a, [, n]) => a + n, 0);
+    const secs = x.res && x.res.secs != null ? x.res.secs : (x.t - (x.t0 || x.t)) / 1000;
+    rows.push({ t: x.t0 || x.t, v: ["HIIT", gDate(x.t0 || x.t), "false", "WOD: " + (w ? w.name + " (" + wodScore(w, x.res) + ")" : x.id),
+      x.vol && x.vol.run ? (x.vol.run / 1000).toFixed(2) : null, null, hms(secs), null, null, null, reps || null, null, null, hms(secs), hms((x.t - (x.t0 || x.t)) / 1000)] });
+  }
+  const byDay = {};
+  for (const s of S.sets) (byDay[dayKey(s.t)] = byDay[dayKey(s.t)] || []).push(s);
+  for (const list of Object.values(byDay)) {
+    list.sort((a, b) => a.t - b.t);
+    const per = {}; for (const s of list) (per[s.ex] = per[s.ex] || []).push(s);
+    const title = Object.entries(per).map(([ex, ss]) => (EX[ex] ? EX[ex].short || EX[ex].name : ex) + " " + ss.map(s => s.reps + (s.kg ? "@+" + fmtKg(s.kg) : "")).join("/")).join("; ");
+    let span = 60; for (let i = 1; i < list.length; i++) span += Math.min(1200, (list[i].t - list[i - 1].t) / 1000) < 1200 ? (list[i].t - list[i - 1].t) / 1000 : 60;   // time between sets 20+ min apart is not training
+    rows.push({ t: list[0].t, v: ["Strength Training", gDate(list[0].t), "false", title, null, null, hms(span), null, null, null, list.reduce((a, s) => a + s.reps, 0), list.length, null, hms(span), hms(span)] });
+  }
+  rows.sort((a, b) => b.t - a.t);   // newest first, as Garmin Connect lists them
+  return "﻿" + [cols.map(csvCell).join(","), ...rows.map(r => r.v.map(csvCell).join(","))].join("\r\n");
+}
+async function doBackup() {
+  const day = dayKey(), files = [
+    new File([JSON.stringify(S, null, 1)], "unbothered-" + day + ".json", { type: "application/json" }),
+    new File([activitiesCsv()], "unbothered-activities-" + day + ".csv", { type: "text/csv" })];
+  const done = () => { S.settings.lastBackup = Date.now(); delete S.settings.backupSnooze; save(); render(); toast("Backed up: 2 files"); };
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: "Unbothered backup" }); done(); return; }
+  } catch (e) { if (e && e.name === "AbortError") { toast("Backup not saved"); return; } }
+  for (const f of files) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+  done();
+}
+function backupBanner() {
+  const st = S.settings, every = st.backupEvery ?? 7; if (!every || logDay) return "";
+  const since = st.lastBackup || 0, due = Date.now() - since >= every * 864e5, snoozed = st.backupSnooze && Date.now() - st.backupSnooze < 864e5;
+  if (!due || snoozed || (!S.sets.length && !S.runs.length && !S.wods.length)) return "";
+  return '<div class="card bkup" role="status"><div><b>Time for a backup</b><span>' + (since ? "Last one " + agoMin(since) : "No backup yet") + ' · your data lives only on this phone</span></div>'
+    + '<button class="small-btn primary" data-act="backup">Back up now</button><button class="link" data-act="backup-later">Later</button></div>';
 }
 
 // ---------- rounds: today's workouts, one after another, as many as you want ----------
@@ -1541,10 +1596,12 @@ function moreView() {
       ${st.look === "classic" ? `<div class="inrow"><label>Classic</label><div class="seg mini">
       <button data-theme-set="dark" class="${st.theme === "dark" ? "on" : ""}">Dark</button><button data-theme-set="light" class="${st.theme === "light" ? "on" : ""}">Light</button></div></div>` : ""}</div>
     <h3>Backup</h3><div class="card">
-      <div class="btn2"><button class="big" data-act="export">Export</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden>
-      <p class="muted fnote">Your data lives only on this phone. Export now and then and keep the file in iCloud Drive or Files.</p></div>
+      <button class="big primary" data-act="backup">Back up now</button>
+      <div class="inrow"><label>Remind me every</label><select data-backup-every aria-label="Backup reminder">${[[1, "day"], [3, "3 days"], [7, "week"], [14, "2 weeks"], [0, "never"]].map(([v, l]) => `<option value="${v}"${(st.backupEvery ?? 7) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+      <p class="muted fnote">Last backup: ${st.lastBackup ? `${dayLabel(dayKey(st.lastBackup))} (${agoMin(st.lastBackup)})` : "never"}. Each backup is two files: <b>unbothered-….json</b> (everything, for Import) and <b>unbothered-activities-….csv</b> (laid out like Garmin Connect's activity export: runs, swims, games, WODs and each day's strength work). Save them to iCloud Drive or Files.</p>
+      <div class="btn2"><button class="big" data-act="export">JSON only</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden></div>
     ${fold("about", "About the quotes", `${QUOTES.length} quotes and where they come from`, `<p class="muted fnote">${about}</p>`)}
-    <p class="muted ver">Unbothered · formerly Unbothered and Stoic Reps</p>`;
+    <p class="muted ver">Unbothered · formerly Unbowed and Stoic Reps</p>`;
 }
 
 // ---------- events ----------
@@ -1624,6 +1681,8 @@ document.addEventListener("click", e => {
     if (!(reps > 0)) { toast("Enter the reps for the goal", true); return; }
     S.goals.push({ id: Date.now(), ex, reps, kg, label: `${reps} ${EX[ex].one}s${kg ? ` with +${fmtKg(kg)} kg` : " unbroken"}` }); save(); render(); return;
   }
+  if (d.act === "backup") { doBackup(); return; }
+  if (d.act === "backup-later") { S.settings.backupSnooze = Date.now(); save(); render(); return; }
   if (d.act === "export") {
     const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `unbothered-${dayKey()}.json`; a.click();
@@ -1642,6 +1701,7 @@ document.addEventListener("change", e => {
     }).catch(err => toast("Import failed: " + err.message, true));
     return;
   }
+  if (t.dataset.backupEvery !== undefined) { S.settings.backupEvery = parseInt(t.value) || 0; save(); render(); return; }
   if (t.dataset.range) {
     const [key, i] = t.dataset.range.split(":"), v = parseInt(t.value); if (!(v > 0)) return;
     const [ex, sub] = key.split("."); const arr = sub ? S.settings.ranges[ex][sub] : S.settings.ranges[ex];
