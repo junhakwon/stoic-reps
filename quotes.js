@@ -1,4 +1,4 @@
-// Stoic quotes, each checked word for word against a public-domain translation:
+// Stoic quotes, each checked word for word against a public-domain translation (then, at the end, quotes in the Stoic spirit):
 //   Marcus Aurelius, Meditations, tr. George Long (1862)  - Project Gutenberg #15877
 //   Seneca, Moral Letters to Lucilius, tr. Richard M. Gummere (1917-25)  - Wikisource
 //   Epictetus, Discourses and Encheiridion, tr. George Long (1877)  - Project Gutenberg #10661
@@ -79,5 +79,29 @@ const QUOTES = [
   { a: "Epictetus", s: "Enchiridion 11", th: "self-mastery", q: "Never say about anything, I have lost it, but say I have restored it." },
   { a: "Epictetus", s: "Enchiridion 12", th: "effort", q: "Begin then from little things." },
   { a: "Epictetus", s: "Enchiridion 35", th: "character", q: "When you have decided that a thing ought to be done, and are doing it, never avoid being seen doing it, though the many shall form an unfavorable opinion about it." },
+  // ---- in the Stoic spirit (k: "spirit"): films, poems, speeches. Added at the end so saved favourites keep their ids. ----
+  // Poems and speeches follow the standard printed texts. Film lines are short ones whose wording agrees across transcripts
+  // (no official scripts were available to check against). Popular quotes with doubtful sources were left out.
+  { k: "spirit", a: "Thomas Wayne", s: "Batman Begins (2005)", th: "adversity", q: "Why do we fall, Bruce? So we can learn to pick ourselves up." },
+  { k: "spirit", a: "Henri Ducard", s: "Batman Begins (2005)", th: "discipline", q: "Training is nothing! Will is everything! The will to act." },
+  { k: "spirit", a: "Bruce Wayne", s: "Batman Begins (2005)", th: "character", q: "It’s not who I am underneath, but what I do that defines me." },
+  { k: "spirit", a: "Harvey Dent", s: "The Dark Knight (2008)", th: "adversity", q: "The night is darkest just before the dawn." },
+  { k: "spirit", a: "Alfred Pennyworth", s: "The Dark Knight (2008)", th: "adversity", q: "Endure, Master Wayne. Take it." },
+  { k: "spirit", a: "Maximus", s: "Gladiator (2000)", th: "time", q: "What we do in life echoes in eternity." },
+  { k: "spirit", a: "Rocky Balboa", s: "Rocky Balboa (2006)", th: "adversity", q: "It ain’t about how hard you hit. It’s about how hard you can get hit and keep moving forward." },
+  { k: "spirit", a: "Yoda", s: "The Empire Strikes Back (1980)", th: "effort", q: "Do. Or do not. There is no try." },
+  { k: "spirit", a: "Theodore Roosevelt", s: "Citizenship in a Republic (1910)", th: "effort", q: "The credit belongs to the man who is actually in the arena, whose face is marred by dust and sweat and blood; who strives valiantly; who errs, who comes short again and again, because there is no effort without error and shortcoming." },
+  { k: "spirit", a: "Theodore Roosevelt", s: "Citizenship in a Republic (1910)", th: "effort", q: "…if he fails, at least fails while daring greatly, so that his place shall never be with those cold and timid souls who neither know victory nor defeat." },
+  { k: "spirit", a: "Shakespeare", s: "Measure for Measure 1.4", th: "better", q: "Our doubts are traitors, / And make us lose the good we oft might win / By fearing to attempt." },
+  { k: "spirit", a: "Shakespeare", s: "Julius Caesar 2.2", th: "character", q: "Cowards die many times before their deaths; / The valiant never taste of death but once." },
+  { k: "spirit", a: "Alfred, Lord Tennyson", s: "Ulysses (1842)", th: "effort", q: "Made weak by time and fate, but strong in will / To strive, to seek, to find, and not to yield." },
+  { k: "spirit", a: "William Ernest Henley", s: "Invictus (1888)", th: "adversity", q: "Under the bludgeonings of chance / My head is bloody, but unbowed." },
+  { k: "spirit", a: "William Ernest Henley", s: "Invictus (1888)", th: "self-mastery", q: "I am the master of my fate, / I am the captain of my soul." },
+  { k: "spirit", a: "Rudyard Kipling", s: "If— (1910)", th: "discipline", q: "If you can force your heart and nerve and sinew / To serve your turn long after they are gone, / And so hold on when there is nothing in you / Except the Will which says to them: ‘Hold on!’" },
+  { k: "spirit", a: "Samuel Beckett", s: "Worstward Ho (1983)", th: "better", q: "Ever tried. Ever failed. No matter. Try again. Fail again. Fail better." },
+  { k: "spirit", a: "Viktor Frankl", s: "Man’s Search for Meaning (1946)", th: "self-mastery", q: "Everything can be taken from a man but one thing: the last of the human freedoms—to choose one’s attitude in any given set of circumstances, to choose one’s own way." },
+  { k: "spirit", a: "Friedrich Nietzsche", s: "Twilight of the Idols, Maxims and Arrows 8", th: "adversity", q: "Out of life’s school of war: What does not destroy me, makes me stronger." },
+  { k: "spirit", a: "Michael Jordan", s: "Nike “Failure” ad (1997)", th: "better", q: "I’ve missed more than 9000 shots in my career. I’ve lost almost 300 games. 26 times, I’ve been trusted to take the game winning shot and missed. I’ve failed over and over and over again in my life. And that is why I succeed." },
+  { k: "spirit", a: "Wayne Gretzky", s: "to The Hockey News (1983)", th: "effort", q: "You miss 100% of the shots you don’t take." },
 ];
 QUOTES.forEach((x, i) => { x.id = i; });

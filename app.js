@@ -162,16 +162,21 @@ function quoteOfDay() {
   const d = dayKey(), trained = activeDays().has(d);
   const stale = !S.qotd || S.qotd.d !== d || !QUOTES[S.qotd.id] || (trained && !TRAIN_THEMES.includes(QUOTES[S.qotd.id].th));
   if (stale) {
-    const pool = trained ? QUOTES.filter(q => TRAIN_THEMES.includes(q.th)) : QUOTES;
+    let pool = trained ? QUOTES.filter(q => TRAIN_THEMES.includes(q.th)) : QUOTES;
+    pool = spiritMix(pool, hash(d + "k") % 100 < SPIRIT_PCT);
     S.qotd = { d, id: pool[hash(d) % pool.length].id }; save();
   }
   return QUOTES[S.qotd.id];
 }
+// about 40% of quotes come from the ones in the Stoic spirit (films, poems, speeches), the rest from the Stoics
+const SPIRIT_PCT = 40;
+const spiritMix = (pool, spirit) => { const p = pool.filter(q => spirit ? q.k === "spirit" : !q.k); return p.length ? p : pool; };
 let lastQuoteId = -1;
 function nextQuote(themes, strict) {      // 70% from the given themes (always, if strict)
   const prefer = strict || Math.random() < 0.7;
   let pool = QUOTES.filter(q => q.id !== lastQuoteId && (!prefer || (themes || TRAIN_THEMES).includes(q.th)));
   if (!pool.length) pool = QUOTES;
+  pool = spiritMix(pool, Math.random() * 100 < SPIRIT_PCT);
   const q = pool[Math.floor(Math.random() * pool.length)]; lastQuoteId = q.id; return q;
 }
 function quoteCard(q) {
@@ -1138,8 +1143,10 @@ function moreView() {
       <button class="big" data-act="export">Export data (JSON)</button>
       <button class="big" data-act="import">Import data…</button><input id="imp" type="file" accept="application/json,.json" hidden>
       <p class="muted" style="font-size:14px">Your data lives only on this phone. Export now and then and keep the file in iCloud Drive or Files.</p></div>
-    <h3>About the quotes</h3><div class="card muted" style="font-size:14px">${QUOTES.length} quotes, each checked word for word against public-domain translations:
-      Marcus Aurelius and Epictetus tr. George Long; Seneca tr. Richard M. Gummere. Musonius Rufus is left out because the usual English translation may still be under copyright.</div>`;
+    <h3>About the quotes</h3><div class="card muted" style="font-size:14px">${QUOTES.filter(q => !q.k).length} Stoic quotes, each checked word for word against public-domain translations:
+      Marcus Aurelius and Epictetus tr. George Long; Seneca tr. Richard M. Gummere. Musonius Rufus is left out because the usual English translation may still be under copyright.
+      <br><br>And ${QUOTES.filter(q => q.k === "spirit").length} in the Stoic spirit, from films, poems and speeches: the Dark Knight trilogy, Rocky, Roosevelt's man in the arena, Invictus, Kipling, Shakespeare, Frankl and more.
+      Poems and speeches follow the printed texts; film lines are kept short and match the common transcripts.</div>`;
 }
 
 // ---------- events ----------

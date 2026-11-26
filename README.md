@@ -8,4 +8,5 @@ records, charts and verified Stoic quotes. Installable on iPhone: open the site 
 All data stays on the device (localStorage). Use More → Backup to export/import JSON.
 
 Quotes are checked word for word against public-domain translations: Marcus Aurelius and Epictetus (tr. George Long),
-Seneca (tr. Richard M. Gummere).
+Seneca (tr. Richard M. Gummere). About 40% of quotes are in the Stoic spirit instead: the Dark Knight trilogy, Rocky, Roosevelt,
+Invictus, Kipling, Shakespeare, Frankl and others (see quotes.js for sources).
