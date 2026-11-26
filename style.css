@@ -646,3 +646,33 @@ html[data-look] .ready .rmsg { font-size: 12px; }
 /* 15: WOD bests trend */
 .wtr { font-weight: 800; margin-left: 4px; } .wtr.up { color: var(--good); } .wtr.dn { color: var(--warn); }
 .bkup .small-btn { white-space: nowrap; padding: 0 14px; }
+
+/* ===== v39: Spider-Man, today's WOD and the quote on one screen ===== */
+html[data-look] .ready { padding: 8px 12px 10px 4px; margin-bottom: 10px; }
+html[data-look] .ready svg.body.mini { width: auto; height: 214px; max-width: none; }
+html[data-look] .ready .gauge { width: 76px; height: 76px; }
+html[data-look] .ready .gauge b { font-size: 24px; }
+html[data-look] .ready .rside { gap: 6px; }
+html[data-look] .ready .rbars div { grid-template-columns: 38px 1fr 26px; font-size: 10px; }
+html[data-look] .ready .rticks .tick.mini { min-height: 36px; }
+.wcompact { padding: 12px 14px; margin-bottom: 10px; }
+.wtitle { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 8px; flex-wrap: wrap; }
+.wtitle .wname { margin: 0; font-size: 21px; }
+.wtitle .wfmt { margin: 0; font-size: 13px; }
+.wchips { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.wchips li { background: var(--card2); border-radius: 10px; padding: 5px 9px; font-size: 13px; line-height: 1.2; }
+.wchips li b { font-variant-numeric: tabular-nums; }
+.wchips li.wlab { background: none; padding: 5px 0 5px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.wcompact .wwhy, .wcompact .wwarn { margin: 0 0 8px; font-size: 12px; }
+.wgo { display: grid; grid-template-columns: 1fr 108px; gap: 8px; align-items: stretch; }
+.wgo .wscale { margin: 0; }
+.wgo .wscale button { min-height: 48px; font-size: 11px; padding: 0 2px; line-height: 1.1; }
+.wgo .big { margin: 0; min-height: 48px; }
+.wlinks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 6px; font-size: 13px; }
+.wlinks .link { min-height: 36px; }
+.wlinks .muted { font-size: 12px; margin-left: auto; }
+/* the quote on Train: still the big caption, just tighter */
+html[data-look] #home-quote .quote { padding: 12px 46px 12px 14px; margin-bottom: 10px; }
+html[data-look] #home-quote .quote blockquote { font-size: 17px; line-height: 1.25; margin: 0 0 6px; }
+html[data-look] #home-quote .quote cite { font-size: 11px; }
+html[data-look="marble"] #home-quote .quote { padding: 14px 16px 12px; }

@@ -581,11 +581,11 @@ function homeView() {
       <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
-    ${backupBanner()}
-    ${wodCard()}
     ${readyCard(st)}
-    ${pathCard()}
+    ${wodCard()}
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
+    ${backupBanner()}
+    ${pathCard()}
     ${restDayCard()}
     ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
     <h3 class="sec">All exercises</h3>
@@ -800,14 +800,21 @@ function wodCard() {
   const lastDone = S.wods.filter(x => x.id === w.id).pop(), nd = wodNeeds(w);
   const why = [lastDone ? `Last done ${agoText(daysSince(dayKey(lastDone.t)))}` : "New for you", best ? `best ${wodScore(w, best.res)}` : ""].filter(Boolean).join(" · ");
   return `${rows ? `<div class="card plan rdlist"><div class="plhead"><b>Done today</b></div>${rows}</div>` : ""}
-    <div class="card wod"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">${fmtShort(w)} · ~${wodMinutes(w)} min${nd.bar ? " · bar" : ""}</span>${doneToday.length ? "" : widgetBtn()}</div>
-    <h2 class="wname">${esc(w.name)}</h2><p class="wfmt">${wodFmt(w)}</p>
-    <div class="seg wscale" role="group" aria-label="How hard">${SCALES.map(([k, l]) => `<button data-wscale="${k}" class="${k === sc ? "on" : ""}" aria-pressed="${k === sc}">${l}</button>`).join("")}</div>
-    ${wodMoves(w)}${w.note ? `<p class="muted wnote">${esc(w.note)}</p>` : ""}
-    <p class="muted wwhy">${why}${tired.length ? ` · <span class="tired">${cap(tired.join(" and "))} still tired: try Easier</span>` : ""}</p>
-    ${rd < 45 && !doneToday.length ? `<p class="wwarn">You're ${rd}% recovered. An easy walk would also be a good day's work.</p>` : ""}
-    <button class="big primary" data-act="wod-start">Start</button>
-    <div class="wbtns"><button class="small-btn" data-act="wod-pick">Choose another</button><button class="small-btn" data-act="wod-log">Log without timer</button></div></div>`;
+    <div class="card wod wcompact"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">~${wodMinutes(w)} min${nd.bar ? " · bar" : ""}</span>${doneToday.length ? "" : widgetBtn()}</div>
+    <div class="wtitle"><h2 class="wname">${esc(w.name)}</h2><span class="wfmt">${fmtShort(w)}</span></div>
+    <ul class="wchips">${wodChips(w)}</ul>
+    ${tired.length ? `<p class="wwhy"><span class="tired">${cap(tired.join(" and "))} still tired: try Easier</span></p>` : rd < 45 && !doneToday.length ? `<p class="wwarn">You're ${rd}% recovered. An easy walk would also be a good day's work.</p>` : ""}
+    <div class="wgo"><div class="seg wscale" role="group" aria-label="How hard">${SCALES.map(([k, l]) => `<button data-wscale="${k}" class="${k === sc ? "on" : ""}" aria-pressed="${k === sc}">${l}</button>`).join("")}</div>
+      <button class="big primary" data-act="wod-start">Start</button></div>
+    <div class="wlinks"><button class="link" data-act="wod-pick">Choose another</button><button class="link" data-act="wod-log">Log without timer</button><span class="muted">${why}</span></div></div>`;
+}
+// the moves as short chips for the compact card (the full list, with what each move stands in for, shows while you do it)
+function wodChips(w) {
+  const chip = (q, m) => `<li>${q ? `<b>${q}</b> ` : ""}${esc(moveName(m).toLowerCase())}</li>`;
+  if (w.fmt === "emom") return `<li class="wlab">odd min</li>${w.odd.map(m => chip(moveQty(m), m)).join("")}<li class="wlab">even min</li>${w.even.map(m => chip(moveQty(m), m)).join("")}`;
+  if (w.fmt === "climb") return chip(`${w.start}, ${w.start + 1}, ${w.start + 2}…`, w.moves[0]);
+  const tag = w.fmt === "ladder" ? `1→${w.top}` : w.fmt === "scheme" ? w.scheme.join("-") : w.fmt === "tabata" ? "20 s" : "";
+  return w.moves.map(m => chip(tag || (m[1] ? moveQty(m) : ""), m)).join("");
 }
 // the chooser: every workout, the ones that suit today first, with filters
 function wodPicker() {
