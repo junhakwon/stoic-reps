@@ -751,10 +751,18 @@ function widgetPayload() {
       : n.kind === "groove" ? n.G.map(g => ({ n: EX[g.x].short || EX[g.x].name, t: `3 × ${S.settings.gtg[g.x]} easy groove`, s: g.n >= 3 ? 2 : g.n ? 1 : 0, p: g.n ? `${Math.min(g.n, 3)}/3` : "" }))
       : [{ n: "Easy walk", t: "20–30 min", s: 0 }];
   }
-  return { v: 1, d: today, at: Date.now(), n: info.n, best: info.best, rank: r.name,
+  const rec = recovery(), ready = Math.round(Object.keys(MUSCLES).reduce((t, m) => t + rec[m], 0) / Object.keys(MUSCLES).length);
+  return { v: 1, d: today, at: Date.now(), n: info.n, best: info.best, rank: r.name, ready, img: widgetFigure(),
     next: r.next && info.n ? { name: r.next[1], in: r.next[0] - info.n - (done ? 0 : 1) } : null,
     done, restOk: info.restOk, restTmrw: done && info.n > 0 && (!info.lastRest || addDays(info.lastRest, 7) <= tmrw),
     first: { started: !!f.p1, done: f.done, rest: !f.plan.length && !f.run && !f.acts.length, items }, second: next };
+}
+// the figure as the app shows it (muscles lit by how recently they were trained), on the widget's dark background
+function widgetFigure() {
+  figure(muscleState()); if (!figCanvas) return null;
+  const c = document.createElement("canvas"); c.width = 182; c.height = 450; const x = c.getContext("2d");
+  x.fillStyle = "#111214"; x.fillRect(0, 0, 182, 450); x.drawImage(figCanvas, 0, 0);
+  return c.toDataURL("image/jpeg", .8).split(",")[1];
 }
 const widgetBtn = () => S.settings.widgetOn ? `<button class="small-btn wbtn" data-act="widget-send" aria-label="Send to widget">⇪ Widget</button>` : "";
 function sendToWidget() {
@@ -1016,7 +1024,7 @@ const agoText = d => d === null ? "not yet" : d === 0 ? "today" : d === 1 ? "yes
 // the arms are cut out along the shoulder so they can sway on their own (points in spidey.png pixels)
 const ARM_L = "41,74 27,90 21,130 9,175 1,212 0,266 33,266 33,214 40,180 46,150 48,118 48,100 46,86";
 const ARM_R = "141,74 155,90 161,130 173,175 181,212 182,266 149,266 149,214 142,180 136,150 134,118 134,100 136,86";
-let figImg = null, figKey = "", figUrl = "", flashAt = 0, flashM = [], flashWord = "";
+let figImg = null, figKey = "", figUrl = "", figCanvas = null, flashAt = 0, flashM = [], flashWord = "";
 function loadFig() {
   if (figImg !== null) return; figImg = false;
   const im = new Image(); im.onload = () => { figImg = im; render(); }; im.src = "spidey.png";
@@ -1042,7 +1050,7 @@ function figure(st) {
     let R = gray + (vr - gray) * lit[j], G = gray + (vg - gray) * lit[j], B = gray + (vb - gray) * lit[j];
     p[i] = R + (r - R) * head[j]; p[i + 1] = G + (g - G) * head[j]; p[i + 2] = B + (b - B) * head[j];
   }
-  x.putImageData(img, 0, 0);
+  x.putImageData(img, 0, 0); figCanvas = c;
   const bin = atob(c.toDataURL("image/png").split(",")[1]), u8 = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   if (figUrl) URL.revokeObjectURL(figUrl);

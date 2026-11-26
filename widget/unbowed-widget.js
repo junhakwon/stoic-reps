@@ -1,10 +1,10 @@
 // Unbowed widget for Scriptable (https://scriptable.app). Name this script exactly: Unbowed
 // The Unbowed app opens scriptable:///run/Unbowed?data=... when you tap "Send to widget"; this script saves that summary
-// and the widget shows it: your streak and today's workout. Sizes: small, medium, large, and the lock-screen ones.
+// and the widget shows it: Spider-Man with the muscles you trained lit up, your streak and today's workout. Sizes: small, medium, large, and the lock-screen ones.
 // Nothing leaves your phone.
 
 const FILE = "unbowed-widget.json";
-const fm = FileManager.local(), path = fm.joinPath(fm.documentsDirectory(), FILE);
+const fm = FileManager.local(), path = fm.joinPath(fm.documentsDirectory(), FILE), figPath = fm.joinPath(fm.documentsDirectory(), "unbowed-figure.jpg");
 const C = {
   bg: new Color("#111214"), card: new Color("#1c1d21"), text: new Color("#f2efe9"), muted: new Color("#9b978f"),
   accent: new Color("#d9a441"), good: new Color("#6fbf73"), warn: new Color("#e5874a"),
@@ -20,7 +20,11 @@ const q = args.queryParameters || {};
 let data = null, justSent = false;
 try { if (fm.fileExists(path)) data = JSON.parse(fm.readString(path)); } catch (e) {}
 const take = raw => {   // keep a summary from the app if it's newer than the one saved
-  try { const d = JSON.parse(raw); if (d && d.v === 1 && d.d && (!data || !(d.at < data.at))) { fm.writeString(path, JSON.stringify(d)); data = d; justSent = true; return true; } } catch (e) {}
+  try {
+    const d = JSON.parse(raw); if (!(d && d.v === 1 && d.d && (!data || !(d.at < data.at)))) return false;
+    if (d.img) { try { fm.write(figPath, Data.fromBase64String(d.img)); } catch (e) {} delete d.img; }   // the figure, kept as its own file
+    fm.writeString(path, JSON.stringify(d)); data = d; justSent = true; return true;
+  } catch (e) {}
   return false;
 };
 if (q.data) take(q.data);
@@ -63,33 +67,32 @@ function mark(stack, item) {
     const img = stack.addImage(SFSymbol.named("circle").image); img.imageSize = new Size(15, 15); img.tintColor = C.muted;
   }
 }
-function itemRow(parent, item, size) {
+function itemRow(parent, item, size, compact) {   // compact: name and sets on one line
   const r = parent.addStack(); r.layoutHorizontally(); r.centerAlignContent(); r.spacing = 6;
   mark(r, item);
-  const col = r.addStack(); col.layoutVertically();
+  const col = r.addStack(); col.layoutVertically(); if (compact) { col.layoutHorizontally(); col.spacing = 5; col.centerAlignContent(); }
   text(col, item.n, size, item.s === 2 ? C.muted : C.text, "medium");
-  if (item.t && item.s !== 2) text(col, item.t, size - 2, C.accent, "medium");
+  if (item.t && item.s !== 2) text(col, item.t, compact ? size - 1 : size - 2, C.accent, "medium");
 }
-function streakBlock(parent, v, big) {
-  const s = parent.addStack(); s.layoutVertically();
-  text(s, "UNBOWED", 9, C.accent, "bold");
-  s.addSpacer(big ? 6 : 2);
-  const row = s.addStack(); row.layoutHorizontally(); row.bottomAlignContent(); row.spacing = 4;
-  text(row, v.n, big ? 40 : 30, C.text, "bold");
-  text(row, "day streak", 11, C.muted, "medium");
-  text(s, v.rank, 12, C.accent, "medium");
-  s.addSpacer(4);
-  const st = text(s, v.status, 11, v.warn ? C.warn : C.good, "medium"); st.lineLimit = 2;
-  if (v.next && !v.stale) text(s, v.next, 10, C.muted);
-}
-function listBlock(parent, v, max, size) {
-  const s = parent.addStack(); s.layoutVertically(); s.spacing = 5;
+function listBlock(parent, v, max, size, compact) {
+  const s = parent.addStack(); s.layoutVertically(); s.spacing = compact ? 4 : 5;
   text(s, v.title.toUpperCase(), 9, C.muted, "bold");
   if (v.stale) { const h = text(s, v.hint, 11, C.muted); h.lineLimit = 3; return; }
   if (v.rest) { const h = text(s, "Everything is recovering. Rest, or an easy walk.", 11, C.muted); h.lineLimit = 3; return; }
   if (!v.items.length) { text(s, "Nothing planned", 11, C.muted); return; }
-  for (const it of v.items.slice(0, max)) itemRow(s, it, size);
+  for (const it of v.items.slice(0, max)) itemRow(s, it, size, compact);
   if (v.items.length > max) text(s, `+${v.items.length - max} more`, 10, C.muted);
+}
+let figCache;
+function fig() { if (figCache === undefined) { try { figCache = fm.fileExists(figPath) ? fm.readImage(figPath) : null; } catch (e) { figCache = null; } } return figCache; }
+function addFig(parent, h) {   // Spider-Man, 182 × 450 in the app
+  const img = fig(); if (!img) return false;
+  const i = parent.addImage(img); i.imageSize = new Size(Math.round(h * 182 / 450), h); return true;
+}
+function headLine(parent, v, size) {   // "25 · Practitioner" with the status under it
+  const r = parent.addStack(); r.layoutHorizontally(); r.bottomAlignContent(); r.spacing = 4;
+  text(r, v.n, size, C.text, "bold"); text(r, "day streak", Math.round(size * .42), C.muted, "medium");
+  const st = text(parent, v.status, 10, v.warn ? C.warn : C.good, "medium"); st.lineLimit = 1;
 }
 function build(v, fam) {
   const w = new ListWidget();
@@ -116,26 +119,50 @@ function build(v, fam) {
     text(w, "UNBOWED", 10, C.accent, "bold"); w.addSpacer(6);
     const t = text(w, "Open Unbowed → More → Send to widget", 13, C.text, "medium"); t.lineLimit = 3; return w;
   }
-  if (fam === "small") {
-    streakBlock(w, v, false);
-    w.addSpacer();
-    if (!v.stale && v.pending) { text(w, v.pending.n, 12, C.text, "medium"); if (v.pending.t) text(w, v.pending.t, 11, C.accent, "medium"); }
+  if (fam === "small") {   // Spider-Man and the next exercise
+    w.setPadding(10, 10, 10, 12);
+    const row = w.addStack(); row.layoutHorizontally(); row.centerAlignContent(); row.spacing = 8;
+    addFig(row, 140);
+    const col = row.addStack(); col.layoutVertically(); col.spacing = 2;
+    text(col, "UNBOWED", 8, C.accent, "bold");
+    const n = col.addStack(); n.layoutHorizontally(); n.bottomAlignContent(); n.spacing = 3;
+    text(n, v.n, 26, C.text, "bold"); text(n, "days", 10, C.muted, "medium");
+    col.addSpacer(6);
+    if (v.stale) { const h = text(col, "Tap ⇪ Widget in Unbowed", 10, C.muted); h.lineLimit = 3; }
+    else if (v.pending) {
+      text(col, v.title === "Next workout" ? "NEXT" : "TODAY", 8, C.muted, "bold");
+      const a = text(col, v.pending.n, 12, C.text, "bold"); a.lineLimit = 2;
+      if (v.pending.t) text(col, v.pending.t, 11, C.accent, "medium");
+    } else { const h = text(col, v.rest ? "Rest day" : v.status, 11, v.warn ? C.warn : C.good, "medium"); h.lineLimit = 2; }
     return w;
   }
-  if (fam === "medium") {
-    const row = w.addStack(); row.layoutHorizontally(); row.topAlignContent();
-    const left = row.addStack(); left.size = new Size(112, 0); streakBlock(left, v, false);
-    row.addSpacer(10);
-    listBlock(row, v, 4, 12);
-    row.addSpacer();
+  if (fam === "medium") {   // Spider-Man | streak, status and today's workout
+    w.setPadding(10, 12, 10, 14);
+    const row = w.addStack(); row.layoutHorizontally(); row.centerAlignContent(); row.spacing = 12;
+    addFig(row, 146);
+    const col = row.addStack(); col.layoutVertically(); col.spacing = 2;
+    const top = col.addStack(); top.layoutHorizontally(); top.centerAlignContent();
+    text(top, "UNBOWED", 8, C.accent, "bold"); top.addSpacer();
+    if (data && data.ready != null && !v.stale) text(top, `${data.ready}% ready`, 9, C.muted, "medium");
+    headLine(col, v, 22);
+    col.addSpacer(6);
+    listBlock(col, v, 4, 12, true);
+    col.addSpacer();
     return w;
   }
-  // large (and extra large): streak on top, then the list
-  const top = w.addStack(); top.layoutHorizontally(); streakBlock(top, v, true); top.addSpacer();
-  w.addSpacer(14);
-  listBlock(w, v, 7, 14);
-  w.addSpacer();
-  if (data && data.at) text(w, `Updated ${new Date(data.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, 9, C.muted);
+  // large (and extra large): a bigger Spider-Man, streak, and the full list
+  w.setPadding(14, 14, 14, 16);
+  const row = w.addStack(); row.layoutHorizontally(); row.topAlignContent(); row.spacing = 14;
+  addFig(row, 300);
+  const col = row.addStack(); col.layoutVertically(); col.spacing = 3;
+  text(col, "UNBOWED", 9, C.accent, "bold");
+  headLine(col, v, 34);
+  text(col, v.rank + (v.next && !v.stale ? ` · ${v.next}` : ""), 10, C.muted, "medium");
+  if (data && data.ready != null && !v.stale) text(col, `${data.ready}% ready`, 10, C.muted, "medium");
+  col.addSpacer(12);
+  listBlock(col, v, 7, 13);
+  col.addSpacer();
+  if (data && data.at) text(col, `Updated ${new Date(data.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`, 9, C.muted);
   return w;
 }
 
