@@ -532,6 +532,7 @@ function homeView() {
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
     ${readyCard(st)}
+    ${planCard(st)}
     ${pathCard()}
     <div class="ticks"><button class="tick ${daily.creatine ? "on" : ""}" data-daily="creatine"><span class="box">${daily.creatine ? "✓" : ""}</span>Creatine</button>
       <button class="tick ${daily.protein ? "on" : ""}" data-daily="protein"><span class="box">${daily.protein ? "✓" : ""}</span>Protein</button></div>
@@ -559,6 +560,68 @@ function readyCard(st) {
         <div><b>${all}%</b><span>READY</span></div></div>
       <p class="rmsg">${msg}</p>
       <div class="rbars">${G.map(([n, v]) => `<div><span>${n === "upper body" ? "Upper" : cap(n)}</span><i><i style="width:${v}%;background:${recColor(v)}"></i></i><b style="${v < 40 ? "color:var(--warn)" : ""}">${v}</b></div>`).join("")}</div></div></div>`;
+}
+// ---------- today's workout: picked from your past sessions ----------
+// one exercise per area (pull, push, legs, core). Each is scored by how overdue it is against your own rhythm
+// (how often you did it in the last 4 weeks), how much you usually do it, and how fresh its muscles are.
+// Areas still under 55% recovered sit out. Judged on how you were before today's training, so the plan stays put while you log. A run joins when you run regularly, it's due, and your legs are fresh.
+const AREAS = [["pull", ["pullup"]], ["push", ["pushup"]], ["legs", ["squat", "lunge"]], ["core", ["kneeraise", "legraise"]]];
+const daysSince = k => k ? Math.round((keyToDate(dayKey()) - keyToDate(k)) / 864e5) : null;
+function todayPlan() {
+  const today = dayKey(), from = addDays(today, -27), items = [], out = [];
+  const work = S.sets.filter(s => !s.gtg), rec0 = recovery(keyToDate(today).getTime());
+  for (const [area, exs] of AREAS) {
+    const opts = exs.map(ex => {
+      const mine = work.filter(s => s.ex === ex), days = new Set(mine.filter(s => dayKey(s.t) >= from && dayKey(s.t) < today).map(s => dayKey(s.t)));
+      const past = mine.map(s => dayKey(s.t)).filter(k => k < today).sort(), d = daysSince(past[past.length - 1]);
+      const m = MUSCLE_OF[ex].reduce((a, b) => rec0[b] < rec0[a] ? b : a), rec = rec0[m];
+      const doneN = mine.filter(s => dayKey(s.t) === today).length, planned = suggest(ex, true).sets;
+      const gap = days.size ? Math.max(1.5, 28 / days.size) : 3;       // your usual days between sessions
+      const due = d === null ? .7 : d / gap;                            // 1 = right on your rhythm
+      return { ex, area, m, rec, d, n: days.size, doneN, planned, due, score: Math.min(due, 3) + Math.min(days.size, 8) * .06 + rec / 200 };
+    });
+    const started = opts.find(o => o.doneN);
+    const pick = started || opts.filter(o => o.rec >= 55).sort((a, b) => b.score - a.score)[0];
+    if (pick) items.push(pick); else out.push(area);
+  }
+  // how many: 3 on a good day, 2 when you're carrying fatigue; anything already started today stays in
+  const all = Math.round(Object.keys(MUSCLES).reduce((t, m) => t + rec0[m], 0) / Object.keys(MUSCLES).length);
+  const want = all >= 60 ? 3 : 2;
+  items.sort((a, b) => (b.doneN ? 9 : 0) + b.score - ((a.doneN ? 9 : 0) + a.score));
+  const plan = items.slice(0, Math.max(want, items.filter(o => o.doneN).length));
+  // a run, when it's part of your routine
+  const runs = S.runs.filter(r => dayKey(r.t) >= from), lastRun = S.runs.reduce((a, r) => !a || r.t > a.t ? r : a, null);
+  const ranToday = S.runs.some(r => dayKey(r.t) === today), legs = Math.min(rec0.quads, rec0.calves);
+  let run = null;
+  if (ranToday) run = { done: true };
+  else if (runs.length >= 2 && legs >= 60) {
+    const d = daysSince(dayKey(lastRun.t)), gap = Math.max(1.5, 28 / runs.length);
+    if (d >= gap * .8) { run = { d, last: lastRun }; if (plan.length > 2 && !plan[plan.length - 1].doneN && plan[plan.length - 1].area === "legs") plan.pop(); }
+  }
+  return { plan, run, out, all };
+}
+function planCard(st) {
+  if (logDay) return "";
+  const { plan, run, out } = todayPlan();
+  if (!plan.length && !run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b></div>
+    <p class="plrest">Everything is still recovering. Rest today, or take an easy walk.</p></div>`;
+  const left = plan.filter(o => o.doneN < o.planned), sets = plan.reduce((t, o) => t + o.planned, 0);
+  const why = o => o.d === null ? "New for you" : o.d === 0 ? "Earlier today" : `${cap(agoText(o.d))}${o.due >= 1.3 ? " · overdue" : ""}`;
+  const rows = plan.map(o => {
+    const sg = suggest(o.ex, true), done = o.doneN >= o.planned;
+    return `<button class="plrow${done ? " done" : ""}" data-ex="${o.ex}"><span class="plck" aria-hidden="true">${done ? "✓" : o.doneN ? `${o.doneN}/${o.planned}` : ""}</span>
+      <span class="plt"><b>${EX[o.ex].name}</b><span class="pln${sg.kind === "down" ? " down" : ""}">${esc(sg.text.replace(/^(Next|Start): /, ""))}</span></span>
+      <span class="plw">${why(o)}<br><span style="color:${recColor(o.rec)}">${MUSCLES[o.m].name.split(" ")[0]} ${o.rec}%</span></span></button>`;
+  }).join("") + (run ? `<button class="plrow run${run.done ? " done" : ""}" data-run-add><span class="plck" aria-hidden="true">${run.done ? "✓" : ""}</span>
+      <span class="plt"><b>Run</b><span class="pln">${run.done ? "Done today" : `About ${run.last.dist ? fmtKm(run.last.dist) + " km" : fmtDur(run.last.dur)}, like last time`}</span></span>
+      <span class="plw">${run.done ? "" : cap(agoText(run.d))}</span></button>` : "");
+  const allDone = !left.length && (!run || run.done);
+  const nextEx = left[0];
+  return `<div class="card plan"><div class="plhead"><b>Today's workout</b><span class="muted">${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets${run && !run.done ? " · run" : ""}</span></div>
+    <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 ? "s" : ""} today.` : ""}</p>
+    ${rows}
+    ${allDone ? `<p class="plrest">Plan done. Well trained today.</p>` : nextEx ? `<button class="big primary plgo" data-ex="${nextEx.ex}">${plan.some(o => o.doneN) ? "Next" : "Start"}: ${EX[nextEx.ex].name}</button>`
+      : `<button class="big primary plgo" data-run-add>Add the run</button>`}</div>`;
 }
 // the path: the last 7 days (height = how much you did) and the next 3 if you keep going
 function pathCard() {
@@ -758,10 +821,10 @@ const glow = d => d <= 1 ? 1 : d === 2 ? .8 : d === 3 ? .6 : d <= 6 ? .35 : 0;  
 const REC_TAU = 30, REC_FULL = 8;
 const setLoad = s => s.gtg ? .4 : s.kg > 0 ? 1.2 : 1;
 const runLoad = r => Math.min(REC_FULL, (effortOf(r) || r.dur / 60 * 2) / 20);
-function recovery() {
+function recovery(skipFrom = Infinity) {   // skipFrom: leave out what was done from this time on
   const now = Date.now(), F = {};
   for (const m in MUSCLES) F[m] = 0;
-  const add = (t, ms, l) => { const h = (now - t) / 36e5; if (h < 0 || h > 240) return; for (const m of ms) F[m] += l * Math.exp(-h / REC_TAU); };
+  const add = (t, ms, l) => { const h = (now - t) / 36e5; if (h < 0 || h > 240 || t >= skipFrom) return; for (const m of ms) F[m] += l * Math.exp(-h / REC_TAU); };
   for (const s of S.sets) add(s.t, musclesOf(s), setLoad(s));
   for (const r of S.runs) add(r.t + r.dur * 1000, RUN_MUSCLES[r.sport] || RUN_MUSCLES.run, runLoad(r));
   const out = {}; for (const m in MUSCLES) out[m] = Math.round(100 * Math.max(0, 1 - F[m] / REC_FULL));
