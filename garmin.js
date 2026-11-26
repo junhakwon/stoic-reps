@@ -1,10 +1,12 @@
 // Garmin activity files -> one run summary, read on the phone (nothing is uploaded anywhere).
 // Reads .fit (also inside the .zip that Garmin Connect's "Export Original" gives), .gpx and .tcx.
 // Result: { t (start, ms), dur (moving s), dist (m), kcal, avgHr, maxHr, sport, hr: { bpm: seconds }, trace: [bpm...], src }
+// plus, for a swim: swim { pool (m), yd (pool set in yards), lengths, strokes, stroke, open }; for soccer: top (m/s), sprints
 "use strict";
 const Garmin = (() => {
   const FIT_EPOCH = 631065600;   // 1989-12-31 00:00 UTC, in Unix seconds
-  const FIT_SPORT = { 1: "run", 11: "walk", 17: "hike", 2: "ride", 5: "swim" };
+  const FIT_SPORT = { 1: "run", 11: "walk", 17: "hike", 2: "ride", 5: "swim", 7: "soccer" };
+  const STROKES = ["freestyle", "backstroke", "breaststroke", "butterfly", "drill", "mixed"];
 
   async function parse(name, buf) {
     let u = new Uint8Array(buf);
@@ -55,7 +57,7 @@ const Garmin = (() => {
   function fit(u) {
     const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
     const hs = u[0], end = Math.min(u.length, hs + dv.getUint32(4, true));
-    const defs = {}, recs = [], sess = [];
+    const defs = {}, recs = [], sess = [], lens = [];
     let p = hs, lastTs = 0;
     while (p < end) {
       const h = u[p++];
@@ -74,28 +76,49 @@ const Garmin = (() => {
       const d = defs[local];
       if (!d) throw new Error("this .fit file looks damaged");
       if (p + d.size > end) break;
-      if (d.g === 20 || d.g === 18) {
+      if (d.g === 20 || d.g === 18 || d.g === 101) {   // record, session, length (one pool length)
         const m = {};
         let q = p; for (const f of d.fields) { m[f.num] = val(dv, q, f, d.le); q += f.size; }
         if (m[253] != null) lastTs = m[253]; else if (ts != null) m[253] = ts;
-        (d.g === 20 ? recs : sess).push(m);
+        (d.g === 20 ? recs : d.g === 18 ? sess : lens).push(m);
       } else if (d.fields.length && d.fields[0].num === 253) {   // keep the clock right for compressed timestamps
         const f = d.fields.find(f => f.num === 253); let q = p; for (const g of d.fields) { if (g === f) break; q += g.size; }
         const v = val(dv, q, f, d.le); if (v != null) lastTs = v;
       }
       p += d.size;
     }
-    const samples = recs.filter(r => r[253] != null).map(r => ({ t: r[253], hr: r[3], dist: r[5] != null ? r[5] / 100 : null }));
+    const samples = recs.filter(r => r[253] != null).map(r => ({ t: r[253], hr: r[3], dist: r[5] != null ? r[5] / 100 : null,
+      v: r[73] != null ? r[73] / 1000 : r[6] != null ? r[6] / 1000 : null }));
     const s = sess[0];
     if (!s && !samples.length) throw new Error("no activity found in that .fit file");
     const sum = (k, div = 1) => sess.reduce((a, x) => a + (x[k] || 0), 0) / div;
     const lastDist = samples.reduce((a, x) => x.dist != null ? x.dist : a, null);
+    const sport = s ? FIT_SPORT[s[5]] || "activity" : "run", extra = {};
+    if (sport === "swim") {
+      // pool swims: the lengths you swam (idle lengths are rests), the pool size, strokes and the stroke you used most
+      const act = lens.filter(l => l[12] !== 0), unit = s[46], dist = sum(9, 100);
+      let pool = s[44] != null ? s[44] / 100 : null;
+      const open = s[6] === 18 || (!act.length && !pool);
+      if (!open && !(pool >= 10 && pool <= 100) && act.length && dist) pool = Math.round(dist / act.length);
+      const by = {}; for (const l of act) if (l[7] != null && STROKES[l[7]]) by[l[7]] = (by[l[7]] || 0) + 1;
+      const top = Object.keys(by).sort((x, y) => by[y] - by[x])[0];
+      const strokes = act.reduce((t, l) => t + (l[5] || 0), 0) || s[10] || null;
+      extra.swim = open ? { open: true, strokes } : { pool, yd: unit === 1, lengths: act.length || (pool && dist ? Math.round(dist / pool) : null), strokes, stroke: top != null ? STROKES[top] : null };
+    }
+    if (sport === "soccer") {
+      // top speed, and sprints: each time you got over 20 km/h (5.5 m/s) after dropping under 14 km/h
+      const sp = samples.map(x => x.v).filter(v => v != null && v < 12);   // over 12 m/s is a GPS jump
+      const max = s[125] != null ? s[125] / 1000 : s[15] != null ? s[15] / 1000 : null;
+      let n = 0, armed = true; for (const v of sp) { if (armed && v >= 5.5) { n++; armed = false; } else if (v < 3.9) armed = true; }
+      extra.top = Math.round(100 * (max != null && max < 12 ? max : sp.length ? Math.max(...sp) : 0)) / 100 || null;
+      if (sp.length) extra.sprints = n;
+    }
     return summary({
-      start: s && s[2] != null ? s[2] : samples[0].t, sport: s ? FIT_SPORT[s[5]] || "activity" : "run",
+      start: s && s[2] != null ? s[2] : samples[0].t, sport, extra, noSplits: sport === "swim" || sport === "soccer",
       dur: s && s[8] != null ? sum(8, 1000) : null, elapsed: s && s[7] != null ? sum(7, 1000) : null,
       dist: s && s[9] != null ? sum(9, 100) : lastDist, kcal: s ? sum(11) || null : null,
       avgHr: s ? s[16] : null, maxHr: s ? sess.reduce((a, x) => Math.max(a, x[17] || 0), 0) || null : null,
-      samples, src: "fit", fitTime: true,
+      samples, src: "fit", fitTime: true, gap: sport === "swim" ? 150 : 30,   // a swim logs a point per pool length, so allow longer gaps
     });
   }
 
@@ -112,7 +135,8 @@ const Garmin = (() => {
     let d = 0; if (pts.length) pts[0].dist = 0;
     for (let i = 1; i < pts.length; i++) { if (pts[i].lat != null && pts[i - 1].lat != null) d += hav(pts[i - 1], pts[i]); pts[i].dist = d; }
     const type = (tag(txt, "type") || "running").toLowerCase();
-    return summary({ start: pts[0].t, sport: /walk/.test(type) ? "walk" : /hik/.test(type) ? "hike" : /cycl|bik/.test(type) ? "ride" : "run",
+    const sport = /walk/.test(type) ? "walk" : /hik/.test(type) ? "hike" : /cycl|bik/.test(type) ? "ride" : /swim/.test(type) ? "swim" : /soccer|football/.test(type) ? "soccer" : "run";
+    return summary({ start: pts[0].t, sport, noSplits: sport === "swim" || sport === "soccer",
       dist: d || null, samples: pts, src: "gpx" });
   }
   function tcx(txt) {
@@ -248,7 +272,7 @@ const Garmin = (() => {
     // splits: moving seconds for each full kilometre, and the part after the last one (if 100 m or more)
     let splits = null, splitLast = null;
     const D = S.filter(x => x.dist != null);
-    if (D.length > 1 && D[D.length - 1].dist - D[0].dist >= 1000) {
+    if (!o.noSplits && D.length > 1 && D[D.length - 1].dist - D[0].dist >= 1000) {
       splits = []; let next = 1000, prev = D[0].mt; const d0 = D[0].dist;
       for (let i = 1; i < D.length; i++) {
         const a = D[i - 1], b = D[i];
@@ -261,11 +285,11 @@ const Garmin = (() => {
       if (rest >= 100) splitLast = [Math.round(D[D.length - 1].mt - prev), Math.round(rest)];
     }
     const dur = Math.round(o.dur || moving || o.elapsed || (S.length ? S[S.length - 1].t - S[0].t : 0));
-    if (!(dur > 0)) throw new Error("couldn't find how long the run was");
+    if (!(dur > 0)) throw new Error("couldn't find how long the activity was");
     return {
       t: Math.round((o.start + off) * 1000), dur, dist: o.dist ? Math.round(o.dist) : null, kcal: o.kcal ? Math.round(o.kcal) : null,
       avgHr: o.avgHr || (hrTime ? Math.round(hrSum / hrTime) : null), maxHr: o.maxHr || maxHr || null,
-      sport: o.sport, hr, trace, src: o.src, ...(splits ? { splits, splitLast } : {}),
+      sport: o.sport, hr, trace, src: o.src, ...(splits ? { splits, splitLast } : {}), ...(o.extra || {}),
     };
   }
   return { parse, fromHealth };

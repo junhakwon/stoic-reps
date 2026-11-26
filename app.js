@@ -404,12 +404,15 @@ function restDone() {
 document.addEventListener("visibilitychange", () => { if (!document.hidden) tickRest(); });
 
 // ---------- runs: from a Garmin file (garmin.js reads it on the phone) or typed in by hand ----------
-const KIND = { run: "run", walk: "walk", hike: "hike", ride: "ride", swim: "swim", activity: "activity" };
-const RUN_MUSCLES = { run: ["quads", "calves"], walk: ["quads", "calves"], hike: ["quads", "calves"], ride: ["quads"], swim: ["shoulders", "lats"], activity: ["quads", "calves"] };
+const KIND = { run: "run", walk: "walk", hike: "hike", ride: "ride", swim: "swim", soccer: "soccer", activity: "activity" };
+const ON_FOOT = ["run", "walk", "hike"];   // counted in running kilometres
+const RUN_MUSCLES = { run: ["quads", "calves"], walk: ["quads", "calves"], hike: ["quads", "calves"], ride: ["quads"], swim: ["shoulders", "lats", "arms"], soccer: ["quads", "calves"], activity: ["quads", "calves"] };
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const fmtDur = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`; };
 const fmtKm = m => (m / 1000).toFixed(2);
-const paceOf = r => r.dist > 0 && r.sport !== "ride" && r.sport !== "swim" ? fmtDur(r.dur / (r.dist / 1000)) + " /km" : "";
+const paceOf = r => r.dist > 0 && r.sport !== "ride" && r.sport !== "swim" && r.sport !== "soccer" ? fmtDur(r.dur / (r.dist / 1000)) + " /km" : "";
+const pace100 = r => r.dist > 0 ? fmtDur(r.dur / (r.dist / 100)) : "";   // swim pace, per 100 m
+const fmtDist = r => r.dist ? (r.sport === "swim" ? `${r.dist.toLocaleString()} m` : `${fmtKm(r.dist)} km`) : "";
 const maxHr = () => S.settings.maxHr || Math.max(185, ...S.runs.map(r => r.maxHr || 0));
 // Garmin's default zones, as % of max heart rate: Z1 under 60, Z2 60–70, Z3 70–80, Z4 80–90, Z5 90 and up
 const ZONES = [["Z1", "Warm-up"], ["Z2", "Easy"], ["Z3", "Aerobic"], ["Z4", "Threshold"], ["Z5", "Maximum"]];
@@ -441,7 +444,7 @@ function runCard(r) {
       <p class="muted zsum">${sp.length > 1 ? `Fastest km ${sp.indexOf(fast) + 1} (${fmtDur(fast)}) · slowest km ${sp.indexOf(slow) + 1} (${fmtDur(slow)})${sp[sp.length - 1] < sp[0] ? " · negative split" : ""}` : "Pace per km"}</p></div>` : "";
   return `<div class="card runcard"><div class="rhead"><b>${cap(KIND[r.sport] || "run")}</b><span class="muted">${at} · ${r.src === "hand" ? "by hand" : r.src === "health" ? "Apple Health" : "Garmin"}</span>
       <button class="small-btn ${pendingRunDel === r.t ? "del" : ""}" data-run-del="${r.t}">${pendingRunDel === r.t ? "Remove?" : "Remove"}</button></div>
-    <div class="rstats">${stat(fmtDur(r.dur), "time")}${stat(r.dist ? fmtKm(r.dist) : "", "km")}${stat(paceOf(r).replace(" /km", ""), "per km")}
+    <div class="rstats">${stat(fmtDur(r.dur), "time")}${sportStats(r, stat)}
       ${stat(r.avgHr, "avg bpm")}${stat(r.maxHr, "max bpm")}${stat(r.kcal, "kcal")}${stat(eff, `effort · ${eff ? effortWord(eff) : ""}`)}</div>
     ${splits}
     ${tot ? `<div class="zbar" role="img" aria-label="Heart-rate zones: ${z.map((s, i) => `${ZONES[i][0]} ${Math.round(100 * s / tot)}%`).join(", ")}">${z.map((s, i) => s ? `<i class="z${i + 1}" style="flex:${s}"></i>` : "").join("")}</div>
@@ -449,26 +452,38 @@ function runCard(r) {
       <p class="muted zsum">Mostly ${ZONES[top][0]} (${ZONES[top][1].toLowerCase()}) · zones from max ${maxHr()} bpm</p>` : ""}
     ${line ? `<div class="hrwrap">${line}<span class="muted">${lo}–${hi} bpm</span></div>` : ""}</div>`;
 }
+// the numbers that matter for each sport
+function sportStats(r, stat) {
+  if (r.sport === "swim") {
+    const w = r.swim || {}, pool = w.pool ? (w.yd ? `${Math.round(w.pool / .9144)} yd` : `${Math.round(w.pool)} m`) : "";
+    return stat(r.dist ? r.dist.toLocaleString() : "", "metres") + stat(pace100(r), "per 100 m") + stat(w.lengths, `lengths${pool ? ` (${pool})` : ""}`)
+      + stat(w.strokes && w.lengths ? Math.round(w.strokes / w.lengths) : "", "strokes / length") + stat(w.stroke ? cap(w.stroke) : w.open ? "Open water" : "", w.stroke ? "mostly" : "");
+  }
+  if (r.sport === "soccer") return stat(r.dist ? fmtKm(r.dist) : "", "km covered") + stat(r.top ? (r.top * 3.6).toFixed(1) : "", "top km/h") + stat(r.sprints, "sprints (20+ km/h)");
+  return stat(r.dist ? fmtKm(r.dist) : "", "km") + stat(paceOf(r).replace(" /km", ""), "per km");
+}
 function runRow(st) {
   const last = S.runs[S.runs.length - 1], g = Math.max(st.quads.g, st.calves.g);
-  const sub = last ? `Last: ${last.dist ? fmtKm(last.dist) + " km, " : ""}${fmtDur(last.dur)} · ${agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5))}` : "Add from a Garmin file or by hand";
+  const sub = last ? `Last ${KIND[last.sport] || "run"}: ${last.dist ? fmtDist(last) + ", " : ""}${fmtDur(last.dur)} · ${agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5))}` : "Add from a Garmin file or by hand";
   return `<button class="exrow" data-run-add><i class="mdot" style="${g ? `opacity:${(.35 + .65 * g).toFixed(2)}` : ""}" data-lit="${g ? 1 : 0}"></i>
       <span class="t"><b>Run</b><span class="nx">${esc(sub)}</span>${recNote("run", st)}</span>
       <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>`;
 }
+let handSport = "run";   // sport picked for a by-hand entry
 function openRunSheet() {
-  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Add a run</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
+  $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Add a run, swim or match</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
     <button class="big primary" data-act="run-paste">Paste from Health</button>
     <p class="muted rhelp">Run the <b>Run to Stoic Reps</b> shortcut first. It copies today's run from Apple Health (synced from Garmin Connect).</p>
     <div id="rn-pastebox" hidden><textarea id="rn-text" rows="3" placeholder="Paste here (touch and hold → Paste)"></textarea>
       <button class="big" data-act="run-paste-text">Add pasted run</button></div>
     <button class="big" data-act="run-file">Choose Garmin file</button><input id="run-file" type="file" hidden>
-    <p class="muted rhelp">Or, in Safari, open the run on connect.garmin.com, tap ⚙ → <b>Export Original</b>, then pick the .zip here. GPX and TCX files work too. Files are read on this phone; nothing is uploaded.</p>
+    <p class="muted rhelp">Runs, pool and open-water swims, and soccer all work. Or, in Safari, open the activity on connect.garmin.com, tap ⚙ → <b>Export Original</b>, then pick the .zip here. GPX and TCX files work too. Files are read on this phone; nothing is uploaded.</p>
     <h3>Or by hand${logDay ? ` · ${dayLabel(logDay)}` : ""}</h3>
-    <div class="inrow"><label>Minutes</label><input id="rn-min" type="number" inputmode="decimal" placeholder="30"></div>
-    <div class="inrow"><label>Distance (km)</label><input id="rn-km" type="number" inputmode="decimal" step="0.01" placeholder="5"></div>
+    <div class="seg" id="rn-sport">${["run", "swim", "soccer"].map(k => `<button data-hand="${k}" class="${k === handSport ? "on" : ""}">${cap(k)}</button>`).join("")}</div>
+    <div class="inrow"><label>Minutes</label><input id="rn-min" type="number" inputmode="decimal" placeholder="${handSport === "soccer" ? 90 : handSport === "swim" ? 45 : 30}"></div>
+    <div class="inrow"><label>Distance (${handSport === "swim" ? "m" : "km"})</label><input id="rn-km" type="number" inputmode="decimal" step="${handSport === "swim" ? 25 : 0.01}" placeholder="${handSport === "swim" ? 1500 : handSport === "soccer" ? 8 : 5}"></div>
     <div class="inrow"><label>Average heart rate</label><input id="rn-hr" type="number" inputmode="numeric" placeholder="bpm"></div>
-    <button class="big" data-act="run-save">Save run</button>`;
+    <button class="big" data-act="run-save">Save ${handSport === "soccer" ? "match" : handSport}</button>`;
   $("#modal").hidden = false;
 }
 function addRun(r) {
@@ -477,15 +492,15 @@ function addRun(r) {
   if (dup && !(FILE.includes(r.src) && !FILE.includes(dup.src))) { toast("That run is already in", true); return; }
   if (dup) S.runs.splice(S.runs.indexOf(dup), 1);
   const k = dayKey(r.t), before = streak(), first = !dup && k === dayKey() && !activeDays().has(k);
-  if (k === dayKey()) freezePlan(null, true);
+  if (k === dayKey()) freezePlan(null, r);
   S.runs.push(r); S.runs.sort((a, b) => a.t - b.t); save();
-  if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtKm(r.dist) + " km in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
+  if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtDist(r) + " in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
   $("#modal").hidden = true; pendingRunDel = null;
   // show the day the run went to
   logDay = k === dayKey() || k < addDays(dayKey(), -30) ? null : k; tab = "home";
   flashAt = Date.now(); flashM = RUN_MUSCLES[r.sport] || RUN_MUSCLES.run; flashWord = "ZOOM!";
   render(); window.scrollTo(0, 0);
-  toast(`${cap(KIND[r.sport] || "run")} added: ${r.dist ? fmtKm(r.dist) + " km in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}${k === dayKey() ? "" : ` (${dayLabel(k)})`}`);
+  toast(`${cap(KIND[r.sport] || "run")} added: ${r.dist ? fmtDist(r) + " in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}${k === dayKey() ? "" : ` (${dayLabel(k)})`}`);
   const n = streak(), r0 = rankOf(before), r1 = rankOf(n);
   if (n > before && r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, n), 60);
   else if (first) setTimeout(() => suitUp(n), 60);
@@ -495,26 +510,29 @@ function addHealthRun(txt) {
 }
 function saveHandRun() {
   const min = parseFloat($("#rn-min").value), km = parseFloat($("#rn-km").value), hr = parseInt($("#rn-hr").value);
-  if (!(min > 0 && min < 1440)) { toast("Enter how many minutes you ran", true); return; }
+  if (!(min > 0 && min < 1440)) { toast("Enter how many minutes it took", true); return; }
   const dur = Math.round(min * 60);
-  addRun({ t: logDay ? stamp() : Date.now() - dur * 1000, dur, dist: km > 0 ? Math.round(km * 1000) : null, kcal: null,
-    avgHr: hr > 30 && hr < 240 ? hr : null, maxHr: null, sport: "run", hr: hr > 30 && hr < 240 ? { [hr]: dur } : {}, trace: [], src: "hand" });
+  addRun({ t: logDay ? stamp() : Date.now() - dur * 1000, dur, dist: km > 0 ? Math.round(handSport === "swim" ? km : km * 1000) : null, kcal: null,
+    avgHr: hr > 30 && hr < 240 ? hr : null, maxHr: null, sport: handSport, hr: hr > 30 && hr < 240 ? { [hr]: dur } : {}, trace: [], src: "hand" });
 }
 function runsProgress() {
   if (!S.runs.length) return "";
-  const wk = weekStart(dayKey()), weeks = [];
-  for (let i = 7; i >= 0; i--) { const w = addDays(wk, -7 * i), rs = S.runs.filter(r => weekStart(dayKey(r.t)) === w);
+  const wk = weekStart(dayKey()), weeks = [], foot = S.runs.filter(r => ON_FOOT.includes(r.sport || "run"));
+  for (let i = 7; i >= 0; i--) { const w = addDays(wk, -7 * i), rs = foot.filter(r => weekStart(dayKey(r.t)) === w);
     weeks.push({ x: shortDate(w), y: Math.round(rs.reduce((a, r) => a + (r.dist || 0), 0) / 100) / 10 }); }
-  const thisWk = S.runs.filter(r => weekStart(dayKey(r.t)) === wk), since = addDays(dayKey(), -29);
-  const month = S.runs.filter(r => dayKey(r.t) >= since), withHr = month.filter(r => r.avgHr);
+  const thisWk = foot.filter(r => weekStart(dayKey(r.t)) === wk), since = addDays(dayKey(), -29);
+  const month = foot.filter(r => dayKey(r.t) >= since), withHr = month.filter(r => r.avgHr);
+  const sw = S.runs.filter(r => r.sport === "swim" && dayKey(r.t) >= since), sc = S.runs.filter(r => r.sport === "soccer" && dayKey(r.t) >= since);
   const list = S.runs.slice(-6).reverse().map(r => `<div class="item"><span>${dayLabel(dayKey(r.t))} · ${cap(KIND[r.sport] || "run")}</span>
-      <b>${r.dist ? fmtKm(r.dist) + " km · " : ""}${fmtDur(r.dur)}${r.avgHr ? ` · ${r.avgHr} bpm` : ""}</b></div>`).join("");
-  return `<h3>Runs</h3><div class="stats">
-      <div class="stat"><b>${fmtKm(thisWk.reduce((a, r) => a + (r.dist || 0), 0))}</b><span>km this week</span></div>
+      <b>${r.dist ? fmtDist(r) + " · " : ""}${fmtDur(r.dur)}${r.avgHr ? ` · ${r.avgHr} bpm` : ""}</b></div>`).join("");
+  return `<h3>Runs, swims & soccer</h3><div class="stats">${foot.length ? `
+      <div class="stat"><b>${fmtKm(thisWk.reduce((a, r) => a + (r.dist || 0), 0))}</b><span>km on foot this week</span></div>
       <div class="stat"><b>${fmtDur(thisWk.reduce((a, r) => a + r.dur, 0))}</b><span>time this week</span></div>
-      <div class="stat"><b>${month.length}</b><span>runs, last 30 days</span></div>
-      <div class="stat"><b>${withHr.length ? Math.round(withHr.reduce((a, r) => a + r.avgHr, 0) / withHr.length) : "—"}</b><span>avg heart rate, last 30 days</span></div></div>
-    <div class="card" style="margin-top:10px"><p class="muted" style="margin:0 0 4px;font-size:13px">Kilometres per week</p>${barChart(weeks, "kilometres per week")}</div>
+      <div class="stat"><b>${month.length}</b><span>runs & walks, last 30 days</span></div>
+      <div class="stat"><b>${withHr.length ? Math.round(withHr.reduce((a, r) => a + r.avgHr, 0) / withHr.length) : "—"}</b><span>avg heart rate, last 30 days</span></div>` : ""}
+      ${sw.length ? `<div class="stat"><b>${sw.reduce((a, r) => a + (r.dist || 0), 0).toLocaleString()} m</b><span>swum in ${sw.length} swim${sw.length === 1 ? "" : "s"}, last 30 days</span></div>` : ""}
+      ${sc.length ? `<div class="stat"><b>${(sc.reduce((a, r) => a + r.dur, 0) / 3600).toFixed(1)} h</b><span>soccer in ${sc.length} game${sc.length === 1 ? "" : "s"}, last 30 days</span></div>` : ""}</div>
+    ${foot.length ? `<div class="card" style="margin-top:10px"><p class="muted" style="margin:0 0 4px;font-size:13px">Kilometres on foot per week</p>${barChart(weeks, "kilometres per week")}</div>` : ""}
     <div class="card list">${list}</div>`;
 }
 
@@ -574,9 +592,11 @@ const AREA_OF = {}; for (const [a, xs] of AREAS) for (const x of xs) AREA_OF[x] 
 const daysSince = k => k ? Math.round((keyToDate(dayKey()) - keyToDate(k)) / 864e5) : null;
 const readiness = rec => Math.round(Object.keys(MUSCLES).reduce((t, m) => t + rec[m], 0) / Object.keys(MUSCLES).length);
 const workedToday = () => { const t = dayKey(); return S.sets.filter(s => !s.gtg && dayKey(s.t) === t); };
-const ranToday = () => S.runs.some(r => dayKey(r.t) === dayKey());
-const runsOf4w = () => S.runs.filter(r => dayKey(r.t) >= addDays(dayKey(), -27));
-const lastRunOf = () => S.runs.reduce((a, r) => !a || r.t > a.t ? r : a, null);
+const isRun = r => (r.sport || "run") === "run";
+const actsToday = () => S.runs.filter(r => dayKey(r.t) === dayKey());   // runs, swims, soccer...
+const ranToday = () => actsToday().some(isRun);
+const runsOf4w = () => S.runs.filter(r => isRun(r) && dayKey(r.t) >= addDays(dayKey(), -27));
+const lastRunOf = () => S.runs.filter(isRun).reduce((a, r) => !a || r.t > a.t ? r : a, null);
 function exInfo(ex, rec) {
   const today = dayKey(), from = addDays(today, -27), mine = S.sets.filter(s => s.ex === ex && !s.gtg);
   const days = new Set(mine.map(s => dayKey(s.t)).filter(k => k >= from && k < today));
@@ -611,17 +631,18 @@ function livePlan() {
   return { plan, run, out };
 }
 // keep the first plan once today's training starts (called just before the first set or run of today is saved)
-function freezePlan(ex, isRun) {
-  const t = dayKey(); if ((S.daily[t] || {}).plan || workedToday().length || ranToday()) return;
+function freezePlan(ex, act) {
+  const t = dayKey(); if ((S.daily[t] || {}).plan || workedToday().length || actsToday().length) return;
+  if (act && !isRun(act)) { S.daily[t] = Object.assign(S.daily[t] || {}, { plan: { ex: [], run: false, acts: [act.t] } }); return; }   // a swim or a match is the first workout
   const live = livePlan(), exs = live.plan.map(o => o.ex);
   if (ex && !exs.includes(ex)) { const i = exs.findIndex(x => AREA_OF[x] === AREA_OF[ex]); if (i >= 0) exs[i] = ex; else exs.push(ex); }   // you picked a different one: swap it in
-  S.daily[t] = Object.assign(S.daily[t] || {}, { plan: { ex: exs, run: !!live.run || !!isRun } });
+  S.daily[t] = Object.assign(S.daily[t] || {}, { plan: { ex: exs, run: !!live.run || !!(act && isRun(act)), acts: act ? [act.t] : [] } });
 }
 // the first plan as kept; if you trained before it was kept, it's what you did
 function firstPlan() {
-  const t = dayKey(), dly = S.daily[t] || {}, worked = workedToday(), ran = ranToday();
-  if (!worked.length && !ran) { if (dly.plan) { delete dly.plan; save(); } return null; }
-  if (!dly.plan) { S.daily[t] = Object.assign(dly, { plan: { ex: [...new Set(worked.map(s => s.ex))], run: ran } }); save(); }
+  const t = dayKey(), dly = S.daily[t] || {}, worked = workedToday(), acts = actsToday();
+  if (!worked.length && !acts.length) { if (dly.plan) { delete dly.plan; save(); } return null; }
+  if (!dly.plan) { S.daily[t] = Object.assign(dly, { plan: { ex: [...new Set(worked.map(s => s.ex))], run: acts.some(isRun), acts: acts.map(r => r.t) } }); save(); }
   return S.daily[t].plan;
 }
 const why = o => o.d === null ? "New for you" : o.d === 0 ? "Earlier today" : `${cap(agoText(o.d))}${o.due >= 1.3 ? " · overdue" : ""}`;
@@ -638,6 +659,10 @@ function runRowP(run) {
     <span class="plt"><b>${run.easy ? "Easy run" : "Run"}</b><span class="pln">${txt}</span></span>
     <span class="plw">${run.done || run.d == null ? "" : cap(agoText(run.d))}</span></button>`;
 }
+// a swim, match or other activity already done today (runs have their own row)
+const actRows = list => list.filter(r => !isRun(r)).map(r => `<button class="plrow run done" data-run-add><span class="plck" aria-hidden="true">✓</span>
+    <span class="plt"><b>${cap(KIND[r.sport] || "activity")}</b><span class="pln">${r.dist ? fmtDist(r) + " · " : ""}${fmtDur(r.dur)}</span></span>
+    <span class="plw">${effortOf(r) ? `Effort ${effortOf(r)}` : ""}</span></button>`).join("");
 function goBtn(plan, run) {
   const left = plan.filter(o => o.doneN < o.planned);
   if (left.length) return `<button class="big primary plgo" data-ex="${left[0].ex}">${plan.some(o => o.doneN) ? "Next" : "Start"}: ${EX[left[0].ex].name}</button>`;
@@ -652,7 +677,7 @@ function planCard() {
     if (!plan.length && !run) return `<div class="card plan"><div class="plhead"><b>Today's workout</b></div>
       <p class="plrest">Everything is still recovering. Rest today, or take an easy walk.</p></div>`;
     return `<div class="card plan"><div class="plhead"><b>Today's workout</b><span class="muted">${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${plan.reduce((t, o) => t + o.planned, 0)} sets${run ? " · run" : ""}</span></div>
-      <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 ? "s" : ""} today.` : ""}</p>
+      <p class="plsub muted">From your last 4 weeks: what's due, and what's fresh.${out.length ? ` ${cap(out.join(" and "))} rest${out.length === 1 && out[0] !== "legs" ? "s" : ""} today.` : ""}</p>
       ${plan.map(planRow).join("")}${runRowP(run)}${goBtn(plan, run)}</div>`;
   }
   // the first workout, as kept
@@ -660,23 +685,24 @@ function planCard() {
   const run1 = p1.run ? (ranToday() ? { done: true } : (() => { const l = lastRunOf(); return l ? { d: daysSince(dayKey(l.t)), last: l } : { easy: true }; })()) : null;
   const done1 = plan.every(o => o.doneN >= o.planned) && (!run1 || run1.done);
   const card1 = `<div class="card plan${done1 ? " pldone" : ""}"><div class="plhead"><b>Today's workout</b><span class="muted">${done1 ? "done ✓" : `${plan.filter(o => o.doneN >= o.planned).length + (run1 && run1.done ? 1 : 0)} of ${plan.length + (run1 ? 1 : 0)} done`}</span></div>
-    ${plan.map(planRow).join("")}${runRowP(run1)}${done1 ? "" : goBtn(plan, run1)}</div>`;
+    ${plan.map(planRow).join("")}${runRowP(run1)}${actRows(actsToday().filter(r => (p1.acts || []).includes(r.t)))}${done1 ? "" : goBtn(plan, run1)}</div>`;
   return card1 + nextCard(p1);
 }
 // the second workout: what the first one left out, judged on how fresh you are now (not counting this second workout yet)
 function nextCard(p1) {
-  const t = dayKey(), rec = recovery(Infinity, s => dayKey(s.t) === t && (s.ex ? !s.gtg && !p1.ex.includes(s.ex) : !p1.run));
+  const t = dayKey(), rec = recovery(Infinity, s => dayKey(s.t) === t && (s.ex ? !s.gtg && !p1.ex.includes(s.ex) : p1.acts ? !p1.acts.includes(s.t) : !p1.run));
+  const later = actsToday().filter(r => p1.acts ? !p1.acts.includes(r.t) : !p1.run);   // done since the first workout
   const { plan, out } = pickPlan(rec, p1.ex);
   let run = null;
   if (!p1.run) {
-    if (ranToday()) run = { done: true };
+    if (later.some(isRun)) run = { done: true };
     else if (runsOf4w().length && Math.min(rec.quads, rec.calves) >= 60) run = { easy: true };
   }
   const head = `<div class="card plan plnext"><div class="plhead"><b>Next workout</b><span class="muted">if you're up for it</span></div>`;
   if (plan.length || run) {
     const sets = plan.reduce((t, o) => t + o.planned, 0);
-    return `${head}<p class="plsub muted">${plan.length ? `${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets` : ""}${plan.length && run ? " · " : ""}${run ? (run.done ? "run done" : "easy run") : ""}. What your first workout left fresh.${out.length ? ` ${cap(out.join(" and "))} need${out.length === 1 ? "s" : ""} the rest.` : ""}</p>
-      ${plan.map(planRow).join("")}${runRowP(run)}${goBtn(plan, run)}</div>`;
+    return `${head}<p class="plsub muted">${plan.length ? `${plan.length} exercise${plan.length === 1 ? "" : "s"} · ${sets} sets` : ""}${plan.length && run ? " · " : ""}${run ? (run.done ? "run done" : "easy run") : ""}. What your first workout left fresh.${out.length ? ` ${cap(out.join(" and "))} need${out.length === 1 && out[0] !== "legs" ? "s" : ""} the rest.` : ""}</p>
+      ${plan.map(planRow).join("")}${runRowP(run)}${actRows(later)}${goBtn(plan, run)}</div>`;
   }
   // nothing fresh enough for working sets: easy groove sets on whatever has the most left (they don't count toward progression)
   const now = recovery(), G = ["pullup", "pushup", "kneeraise", "legraise"].map(x => {
@@ -740,13 +766,13 @@ function runTile(st) {
   const rs = S.runs.filter(r => dayKey(r.t) === curDay()), last = S.runs[S.runs.length - 1];
   if (rs.length) {
     const r = rs[rs.length - 1], e = effortOf(r);
-    return `<button class="tile run done" data-run-add><span class="th"><b>Run</b><span class="tdone">DONE</span></span>
-      <span class="tn2">${r.dist ? fmtKm(r.dist) + " km · " : ""}${fmtDur(r.dur)}</span>${e ? `<span class="te">Effort <b>${e}</b> · ${effortWord(e)}</span>` : ""}</button>`;
+    return `<button class="tile run done" data-run-add><span class="th"><b>${cap(KIND[r.sport] || "run")}</b><span class="tdone">DONE</span></span>
+      <span class="tn2">${r.dist ? fmtDist(r) + " · " : ""}${fmtDur(r.dur)}</span>${e ? `<span class="te">Effort <b>${e}</b> · ${effortWord(e)}</span>` : ""}</button>`;
   }
   const rec = Math.min(st.quads.rec, st.calves.rec);
   const ago = last ? agoText(Math.round((keyToDate(dayKey()) - keyToDate(dayKey(last.t))) / 864e5)) : "";
-  return `<button class="tile run" data-run-add><span class="th"><b>Run</b><span class="tp" aria-hidden="true">+</span></span>
-    <span class="tn2">${last ? `Last: ${last.dist ? fmtKm(last.dist) + " km" : fmtDur(last.dur)} · ${ago}` : "From Garmin or by hand"}</span>
+  return `<button class="tile run" data-run-add><span class="th"><b>Run · Swim · Soccer</b><span class="tp" aria-hidden="true">+</span></span>
+    <span class="tn2">${last ? `Last ${KIND[last.sport] || "run"}: ${last.dist ? fmtDist(last) : fmtDur(last.dur)} · ${ago}` : "From Garmin or by hand"}</span>
     ${rec < 60 ? `<span class="tr">Legs ${rec}% recovered</span>` : ""}
     <i class="tb" aria-hidden="true"><i style="width:${rec}%;background:${recColor(rec)}"></i></i></button>`;
 }
@@ -1125,6 +1151,9 @@ document.addEventListener("click", e => {
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.runAdd !== undefined) { openRunSheet(); return; }
+  if (d.hand) {   // keep what's typed while switching sport
+    const keep = ["rn-min", "rn-km", "rn-hr"].map(id => $("#" + id).value), was = handSport; handSport = d.hand; openRunSheet();
+    ["rn-min", "rn-km", "rn-hr"].forEach((id, i) => { $("#" + id).value = i === 1 && was !== handSport ? "" : keep[i]; }); return; }
   if (d.act === "run-file") { $("#run-file").click(); return; }
   if (d.act === "run-save") { saveHandRun(); return; }
   if (d.act === "run-paste") {   // read the shortcut's text from the clipboard; if the phone won't allow it, show a box to paste into
@@ -1136,7 +1165,7 @@ document.addEventListener("click", e => {
   }
   if (d.act === "run-paste-text") { addHealthRun($("#rn-text").value); return; }
   if (d.runDel !== undefined) { const t = +d.runDel;
-    if (pendingRunDel === t) { S.runs = S.runs.filter(r => r.t !== t); pendingRunDel = null; save(); toast("Run removed"); } else pendingRunDel = t;
+    if (pendingRunDel === t) { S.runs = S.runs.filter(r => r.t !== t); pendingRunDel = null; save(); toast("Removed"); } else pendingRunDel = t;
     render(); return; }
   if (d.quick) { quickSet(d.quick); return; }
   if (d.qex) { S.settings.quickEx = d.qex; save(); render(); return; }

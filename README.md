@@ -2,6 +2,7 @@
 
 A small offline training log (pull-ups, push-ups, squats, lunges) with double-progression suggestions, a daily
 workout picked from your last four weeks (what's due, what's recovered),
+runs, pool and open-water swims and soccer read from Garmin .fit files (or added by hand),
 records, charts and verified Stoic quotes. Installable on iPhone: open the site in Safari → Share → Add to Home Screen.
 
 All data stays on the device (localStorage). Use More → Backup to export/import JSON.
