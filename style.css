@@ -4,7 +4,7 @@
 }
 [data-theme="light"] {
   --bg: #f4f1ea; --card: #ffffff; --card2: #ece8df; --text: #1b1a17; --muted: #6d685f;
-  --accent: #8a5d12; --accent-ink: #ffffff; --good: #2e7d32; --warn: #9a4410; --line: #ddd7cb;
+  --accent: #8a5d12; --accent-ink: #ffffff; --good: #276a2b; --warn: #9a4410; --line: #ddd7cb;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -421,14 +421,15 @@ svg.hrline polyline { fill: none; stroke: #e0503f; stroke-width: 2; stroke-linej
 .path .sline { margin: 6px 2px 0; }
 .ticks { display: flex; gap: 8px; margin-bottom: 12px; }
 .ticks .tick { flex: 1; }
-.thint { margin: 4px 2px 8px; font-size: 13px; }
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .tile { background: var(--card); border-radius: 18px; padding: 12px; text-align: left; display: flex; flex-direction: column; gap: 5px; min-height: 100px; }
 .tile.low { opacity: .8; }
 .tile .th { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .tile .th b { font-size: 15px; }
 .tile .tp { width: 28px; height: 28px; border-radius: 9px; background: var(--card2); display: grid; place-items: center; font-size: 18px; flex: none; }
-.tile .tp.on { background: var(--accent); color: var(--accent-ink); }
+.tile .tp.cnt { font-size: 11px; font-weight: 700; color: var(--accent); width: auto; padding: 0 7px; }
+.tile.tdone .tp { background: var(--good); color: #fff; }
+.tile.tdone .th b { color: var(--muted); }
 .tile .tn { font-size: 12px; color: var(--accent); font-weight: 600; }
 .tile .tn.down { color: var(--warn); }
 .tile .tn2 { font-size: 12px; color: var(--muted); }
@@ -469,3 +470,67 @@ svg.hrline polyline { fill: none; stroke: #e0503f; stroke-width: 2; stroke-linej
 .wsetup ol { padding-left: 20px; margin: 8px 0 12px; font-size: 14px; line-height: 1.5; }
 .wsetup p { margin: 0; }
 .wsetup .rhelp a { color: var(--accent); }
+.plpeek { width: 100%; text-align: left; display: block; padding: 14px 16px; }
+.plpeek .plhead { align-items: center; }
+.plpeek .plhead b { font-size: 15px; }
+.plchev { font-size: 22px; line-height: 1; color: var(--muted); margin-left: 4px; }
+.plpeek .plhead b { white-space: nowrap; }
+.plpeek .plhead .muted { font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+h3.sec { margin: 20px 2px 8px; }
+.next .setn { margin-left: 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.ptabs { margin: 4px 0 14px; position: sticky; top: calc(env(safe-area-inset-top) + 6px); z-index: 4; background: var(--card); padding: 4px; border-radius: 14px; box-shadow: 0 6px 16px rgba(0,0,0,.25); }
+.ptabs button { min-height: 40px; }
+.cnote { font-size: 13px; margin: 6px 2px 0; }
+/* recent activities */
+.list .act { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.list .act:last-child { border-bottom: 0; }
+.act > i { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--accent); }
+.act > i.sp-run, .act > i.sp-walk, .act > i.sp-hike { background: #3d8fd6; }
+.act > i.sp-swim { background: #4fc3c7; }
+.act > i.sp-soccer { background: var(--good); }
+.act > span { display: flex; flex-direction: column; min-width: 0; }
+.act > span b { font-size: 15px; }
+.act > span small { font-size: 12px; color: var(--muted); }
+.act > em { margin-left: auto; font-style: normal; font-size: 14px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+/* folds (collapsible cards) */
+.fold { padding: 0; }
+.fold > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer; min-height: 52px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fold > summary small { color: var(--muted); font-size: 12px; }
+.fold > summary i { margin-left: auto; font-style: normal; font-size: 22px; color: var(--muted); transition: transform .2s; }
+.fold[open] > summary i { transform: rotate(90deg); }
+.fold .fbody { padding: 0 16px 14px; }
+.fold h4 { margin: 14px 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+.fnote { font-size: 13px; margin: 6px 0 2px; }
+.wsetup .fold { background: var(--card2); margin: 10px 0 0; }
+.btn2 { display: flex; gap: 10px; }
+.btn2 .big { margin-top: 0; }
+.seg.mini { flex: 0 0 auto; width: 170px; }
+.seg.mini button { min-height: 38px; }
+.small-btn.primary { background: var(--accent); color: var(--accent-ink); }
+.bwin input { flex: 1; }
+.bwin .unit { color: var(--muted); font-size: 14px; }
+.item small.dn { color: var(--good); font-weight: 600; margin-left: 4px; }
+.item small.up { color: var(--muted); font-weight: 600; margin-left: 4px; }
+.link.morelink, .link.morefav { display: block; margin: 10px 0 2px; font-size: 14px; }
+.link.morefav { margin: -4px 4px 12px; }
+.goalnew { flex-wrap: nowrap; gap: 6px; }
+.goalnew select { flex: 1.4; min-width: 0; }
+.goalnew input { flex: 1; min-width: 0; }
+.ver { text-align: center; font-size: 12px; margin: 18px 0 8px; }
+.act[data-goday] { cursor: pointer; }
+.xbtn { width: 36px; height: 36px; border-radius: 18px; background: var(--card2); color: var(--muted); font-size: 20px; line-height: 1; flex: none; position: relative; }
+.xbtn::after { content: ""; position: absolute; inset: -4px; }   /* 44 px touch area */
+.goalnew select { flex: 2; }
+.qseg button { font-size: 13px; padding: 0 4px; line-height: 1.15; }
+.mlist small em { font-style: normal; }
+/* 44-point tap areas for small controls (the visible size stays the same) */
+.dayctl button { min-width: 44px; min-height: 44px; }
+.plhead .wbtn, .qtype button, .seg.mini button, .wsetup a { position: relative; }
+.plhead .wbtn::after, .qtype button::after { content: ""; position: absolute; inset: -7px -2px; }
+.seg.mini button { min-height: 44px; }
+.ptabs button, .qseg button { min-height: 44px; }
+.wsetup a { display: inline-block; padding: 13px 0; margin: -13px 0; }
+/* the suit-up and GO flashes never catch taps: they fade on their own, and a tap meant for Log set must log the set */
+.suit, .restgo { pointer-events: none; }
