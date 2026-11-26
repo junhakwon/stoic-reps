@@ -572,6 +572,8 @@ function render() {
   const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = look === "classic" ? (S.settings.theme === "light" ? "#f4f1ea" : "#111214") : LOOKS[look].color;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
+  const car = $("#wcar"); if (car) { const cards = car.querySelectorAll(".wslide"), i = +car.dataset.at || 0;
+    if (cards[i]) { car.style.scrollBehavior = "auto"; car.scrollLeft = cards[i].offsetLeft - cards[0].offsetLeft; car.style.scrollBehavior = ""; } }
 }
 
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
@@ -746,7 +748,7 @@ function wodMoves(w) {
 }
 // Scaling, like Rx / Scaled on a gym whiteboard: easier = about 70% of the reps, half the running, knee raises instead of
 // leg raises; harder = leg raises instead of knee raises and feet-up push-ups. Bests are kept per scale.
-const SCALES = [["easy", "Easier"], ["rx", "As written"], ["hard", "Harder"]];
+const SCALES = [["easy", "Easier"], ["rx", "Normal"], ["hard", "Harder"]];
 const scaleTag = sc => sc && sc !== "rx" ? ` <small class="wsc">${sc === "easy" ? "easier" : "harder"}</small>` : "";
 function wodOf(id, sc = "rx") {
   const w = WOD_BY[id]; if (!w || !sc || sc === "rx") return w;
@@ -794,20 +796,38 @@ function wodCard() {
   if (doneToday.length && !d.wodMore) return `<div class="card plan wod"><div class="plhead"><b>Today's WOD</b><span class="muted">done</span>${widgetBtn()}</div>${rows}
       <button class="big wmore" data-act="wod-more">Another WOD</button></div>`;
   const base = wodChoice(); if (!base) return "";
-  const sc = d.wodScale || "rx", w = wodOf(base.id, sc);
-  const rec = recovery(), rd = readiness(rec), best = wodBest(w.id, sc), L = wodLoad(wodVolume(w));
-  const tired = Object.keys(L).filter(m => L[m] >= 1 && rec[m] < 50).map(m => MUSCLES[m].name.split(" ")[0].toLowerCase());
-  const lastDone = S.wods.filter(x => x.id === w.id).pop(), nd = wodNeeds(w);
-  const why = [lastDone ? `Last done ${agoText(daysSince(dayKey(lastDone.t)))}` : "New for you", best ? `best ${wodScore(w, best.res)}` : ""].filter(Boolean).join(" · ");
-  return `${rows ? `<div class="card plan rdlist"><div class="plhead"><b>Done today</b></div>${rows}</div>` : ""}
-    <div class="card wod wcompact"><div class="plhead"><b>${doneToday.length ? "Another WOD" : "Today's WOD"}</b><span class="muted">~${wodMinutes(w)} min${nd.bar ? " · bar" : ""}</span>${doneToday.length ? "" : widgetBtn()}</div>
-    <div class="wtitle"><h2 class="wname">${esc(w.name)}</h2><span class="wfmt">${fmtShort(w)}</span></div>
-    <ul class="wchips">${wodChips(w)}</ul>
-    ${tired.length ? `<p class="wwhy"><span class="tired">${cap(tired.join(" and "))} still tired: try Easier</span></p>` : rd < 45 && !doneToday.length ? `<p class="wwarn">You're ${rd}% recovered. An easy walk would also be a good day's work.</p>` : ""}
-    <div class="wgo"><div class="seg wscale" role="group" aria-label="How hard">${SCALES.map(([k, l]) => `<button data-wscale="${k}" class="${k === sc ? "on" : ""}" aria-pressed="${k === sc}">${l}</button>`).join("")}</div>
-      <button class="big primary" data-act="wod-start">Start</button></div>
-    <div class="wlinks"><button class="link" data-act="wod-pick">Choose another</button><button class="link" data-act="wod-log">Log without timer</button><span class="muted">${why}</span></div></div>`;
+  const sc = d.wodScale || "rx", rec = recovery(), rd = readiness(rec), ids = wodDeck(), at = Math.max(0, ids.indexOf(base.id));
+  const card = (id, i) => {
+    const w = wodOf(id, sc), best = wodBest(id, sc), L = wodLoad(wodVolume(w)), nd = wodNeeds(w), lastDone = S.wods.filter(x => x.id === id).pop();
+    const tired = Object.keys(L).filter(m => L[m] >= 1 && rec[m] < 50).map(m => MUSCLES[m].name.split(" ")[0].toLowerCase());
+    const why = [lastDone ? "Last done " + agoText(daysSince(dayKey(lastDone.t))) : "New for you", best ? "best " + wodScore(w, best.res) : ""].filter(Boolean).join(" · ");
+    return '<article class="card wod wcompact wslide" data-wid="' + id + '" aria-roledescription="slide" aria-label="' + (i + 1) + ' of ' + ids.length + ': ' + esc(w.name) + '">'
+      + '<div class="plhead"><b>' + (doneToday.length ? "Another WOD" : "Today's WOD") + '</b><span class="muted">' + (i + 1) + '/' + ids.length + ' · ~' + wodMinutes(w) + ' min' + (nd.bar ? " · bar" : "") + '</span>' + (i === 0 && !doneToday.length ? widgetBtn() : "") + '</div>'
+      + '<div class="wtitle"><h2 class="wname">' + esc(w.name) + '</h2><span class="wfmt">' + fmtShort(w) + '</span></div>'
+      + '<ul class="wchips">' + wodChips(w) + '</ul>'
+      + (tired.length ? '<p class="wwhy"><span class="tired">' + cap(tired.join(" and ")) + ' still tired: try Easier</span></p>' : rd < 45 && !doneToday.length ? '<p class="wwarn">You\'re ' + rd + '% recovered. An easy walk would also be a good day\'s work.</p>' : "")
+      + '<div class="wgo"><div class="seg wscale" role="group" aria-label="How hard">' + SCALES.map(([k, l]) => '<button data-wscale="' + k + '" class="' + (k === sc ? "on" : "") + '" aria-pressed="' + (k === sc) + '">' + l + '</button>').join("") + '</div>'
+      + '<button class="big primary" data-act="wod-start" data-wid="' + id + '">Start</button></div>'
+      + '<div class="wlinks"><button class="link" data-act="wod-log" data-wid="' + id + '">Log without timer</button><span class="muted">' + why + '</span></div></article>';
+  };
+  const more = '<button class="card wslide wmoreslide" data-act="wod-pick"><b>All ' + WODS.length + ' workouts</b><span>Filter by time, running or the bar</span><i aria-hidden="true">→</i></button>';
+  return (rows ? '<div class="card plan rdlist"><div class="plhead"><b>Done today</b></div>' + rows + '</div>' : "")
+    + '<div class="wcar" id="wcar" data-at="' + at + '" role="region" aria-label="Workouts for today. Swipe for more.">' + ids.map(card).join("") + more + '</div>'
+    + '<div class="wdots" aria-hidden="true">' + ids.map((id, i) => '<i class="' + (i === at ? "on" : "") + '"></i>').join("") + '<i class="wplus"></i></div>';
 }
+// the cards to swipe through: today's best picks (stable for the day), with the one you chose always in
+function wodDeck() {
+  return memo("wodDeck", () => { const p = wodPicks().slice(0, 8).map(w => w.id), d = wodDay(); if (d.wodId && WOD_BY[d.wodId] && !p.includes(d.wodId)) p.unshift(d.wodId); return p; });
+}
+// the card you stop on becomes today's WOD; the dots follow
+let deckT = 0;
+function deckSync(el) {
+  const cards = el.querySelectorAll(".wslide"); if (!cards.length) return;
+  const step = cards[1] ? cards[1].offsetLeft - cards[0].offsetLeft : el.clientWidth, i = Math.round(el.scrollLeft / step);
+  el.parentNode.querySelectorAll(".wdots i").forEach((dot, k) => dot.classList.toggle("on", k === i));
+  const c = cards[i]; if (c && c.dataset.wid) { el.dataset.at = i; const d = wodDay(); if (d.wodId !== c.dataset.wid) { d.wodId = c.dataset.wid; save(); } }
+}
+document.addEventListener("scroll", e => { if (e.target && e.target.id === "wcar") { clearTimeout(deckT); deckT = setTimeout(() => deckSync(e.target), 90); } }, true);
 // the moves as short chips for the compact card (the full list, with what each move stands in for, shows while you do it)
 function wodChips(w) {
   const chip = (q, m) => `<li>${q ? `<b>${q}</b> ` : ""}${esc(moveName(m).toLowerCase())}</li>`;
@@ -1707,13 +1727,42 @@ function moreView() {
     <p class="muted ver">Unbothered · formerly Unbowed and Stoic Reps</p>`;
 }
 
+// ---------- swipes: between screens, through the WOD cards (the carousel scrolls itself), and to tick a move ----------
+const SWIPE_SEQ = [["home"], ["progress", "body"], ["progress", "lifts"], ["progress", "cardio"], ["more"]];
+const seqIndex = () => tab === "progress" ? SWIPE_SEQ.findIndex(x => x[1] === (S.settings.progTab || "body")) : SWIPE_SEQ.findIndex(x => x[0] === tab);
+let slideT = 0;
+function slideIn(dir) {   // the new screen slides in from the side it came from, its cards rising one after another
+  const v = $("#view"); v.classList.remove("in-l", "in-r", "enter"); void v.offsetWidth;
+  v.classList.add(dir > 0 ? "in-l" : "in-r", "enter"); clearTimeout(slideT); slideT = setTimeout(() => v.classList.remove("in-l", "in-r", "enter"), 800);
+}
+function goSeq(i, dir) {
+  const x = SWIPE_SEQ[i]; if (!x) return;
+  tab = x[0]; if (x[1]) S.settings.progTab = x[1];
+  save(); slideIn(dir); render(); window.scrollTo(0, 0);
+}
+let touch = null;
+document.addEventListener("touchstart", e => {
+  if (e.touches.length !== 1) { touch = null; return; }
+  const t = e.touches[0]; touch = { x: t.clientX, y: t.clientY, at: Date.now(), el: e.target };
+}, { passive: true });
+document.addEventListener("touchend", e => {
+  if (!touch) return;
+  const t = e.changedTouches[0], dx = t.clientX - touch.x, dy = t.clientY - touch.y, el = touch.el, quick = Date.now() - touch.at < 700; touch = null;
+  if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6 || !el.closest) return;
+  const row = el.closest(".wmv"); if (row) { if (dx > 0 && !row.classList.contains("on")) row.click(); return; }   // swipe a move right: done
+  if (!$("#modal").hidden || !$("#sheet").hidden) return;
+  if (el.closest(".wcar, .chips, .qseg, .seg, .qtype, .looks, input, select, textarea")) return;   // these slide or scroll sideways themselves
+  const i = seqIndex(), j = i + (dx < 0 ? 1 : -1);
+  if (j >= 0 && j < SWIPE_SEQ.length) goSeq(j, dx < 0 ? 1 : -1);
+}, { passive: true });
+
 // ---------- events ----------
 document.addEventListener("click", e => {
   const b = e.target.closest("button, [data-muscle], [data-goday], #suit, #restgo"); if (!b) return;
   const d = b.dataset;
   if (d.muscle) { muscleInfo(d.muscle); return; }
-  if (d.ptab) { S.settings.progTab = d.ptab; save(); render(); return; }
-  if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); return; }
+  if (d.ptab) { const was = seqIndex(); S.settings.progTab = d.ptab; save(); slideIn(seqIndex() >= was ? 1 : -1); render(); return; }
+  if (d.tab) { const was = seqIndex(); tab = d.tab; slideIn(seqIndex() >= was ? 1 : -1); render(); window.scrollTo(0, 0); return; }
   if (d.fav !== undefined) { toggleFav(d.fav); if (tab === "more") render(); return; }
   if (d.ex) { openSheet(d.ex); return; }
   if (d.runAdd !== undefined) { openRunSheet(); return; }
@@ -1730,10 +1779,10 @@ document.addEventListener("click", e => {
   if (d.wscale) { wodDay().wodScale = d.wscale; save(); render(); return; }
   if (d.act === "wod-move") { wodMove(+d.i); return; }
   if (d.act === "wod-pause") { wodPause(); return; }
-  if (d.act === "wod-start") { wodStart(); return; }
+  if (d.act === "wod-start") { if (d.wid) wodDay().wodId = d.wid; wodStart(); return; }
   if (d.act === "wod-another") { const x = wodDay(); x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
   if (d.act === "wod-more") { const x = wodDay(); x.wodMore = true; x.wodSkip = (x.wodSkip || 0) + 1; delete x.wodId; save(); render(); return; }
-  if (d.act === "wod-log") { wodFinish(true); return; }
+  if (d.act === "wod-log") { if (d.wid) { wodDay().wodId = d.wid; save(); } wodFinish(true); return; }
   if (d.act === "wod-finish") { wodFinish(); return; }
   if (d.act === "wod-save") { wodSave(); return; }
   if (d.act === "wod-round") { const r = wodDay().wodRun; if (r) { r.rounds = (r.rounds || 0) + 1; save(); const e = $("#wrounds"); if (e) e.textContent = r.rounds; beep(1, 770); } return; }

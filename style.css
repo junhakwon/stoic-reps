@@ -676,3 +676,37 @@ html[data-look] #home-quote .quote { padding: 12px 46px 12px 14px; margin-bottom
 html[data-look] #home-quote .quote blockquote { font-size: 17px; line-height: 1.25; margin: 0 0 6px; }
 html[data-look] #home-quote .quote cite { font-size: 11px; }
 html[data-look="marble"] #home-quote .quote { padding: 14px 16px 12px; }
+
+/* ===== v40: swipes and motion ===== */
+/* the WOD carousel: cards snap into place, the next one peeks in from the edge */
+.wcar { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; scroll-padding: 0 16px; }
+.wcar::-webkit-scrollbar { display: none; }
+.wcar > .wslide { flex: 0 0 calc(100% - 30px); scroll-snap-align: start; scroll-snap-stop: always; margin-bottom: 0; }
+.wmoreslide { flex-basis: 58% !important; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 6px; text-align: left; padding: 16px; }
+.wmoreslide b { font-size: 18px; }
+.wmoreslide span { font-size: 13px; color: var(--muted); }
+.wmoreslide i { font-style: normal; font-size: 28px; color: var(--accent); }
+.wdots { display: flex; justify-content: center; align-items: center; gap: 6px; margin: 8px 0 10px; }
+.wdots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width .25s ease, background .25s ease; }
+.wdots i.on { width: 20px; background: var(--accent); }
+.wdots i.wplus { opacity: .5; }
+/* screens slide in from the side they come from; their cards rise one after another */
+@keyframes slide-l { from { opacity: 0; transform: translateX(32px); } }
+@keyframes slide-r { from { opacity: 0; transform: translateX(-32px); } }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+#view.in-l { animation: slide-l .3s cubic-bezier(.2, .8, .2, 1); }
+#view.in-r { animation: slide-r .3s cubic-bezier(.2, .8, .2, 1); }
+#view.enter > * { animation: rise .38s cubic-bezier(.2, .8, .2, 1) both; }
+#view.enter > *:nth-child(2) { animation-delay: .04s; } #view.enter > *:nth-child(3) { animation-delay: .08s; }
+#view.enter > *:nth-child(4) { animation-delay: .12s; } #view.enter > *:nth-child(5) { animation-delay: .16s; } #view.enter > *:nth-child(n+6) { animation-delay: .2s; }
+/* a move can be swiped right to tick it */
+.wmv { touch-action: pan-y; transition: opacity .2s ease, transform .2s ease; }
+.wmv.on { transform: translateX(4px); }
+/* v40: keep the quote on the first screen with the carousel dots */
+html[data-look] .ready svg.body.mini { height: 200px; }
+html[data-look] .ready { padding: 6px 12px 8px 4px; }
+.wdots { margin: 6px 0 8px; }
+.wcompact { padding: 10px 14px; }
+.wtitle { margin: 2px 0 6px; }
+html[data-look] #home-quote .quote { padding: 10px 46px 10px 14px; }
