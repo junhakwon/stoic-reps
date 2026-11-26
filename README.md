@@ -1,4 +1,6 @@
-# Stoic Reps
+# Unbowed
+
+(Formerly Stoic Reps. Data is still stored under the `stoicreps.v1` key, so logs carry over.)
 
 A small offline training log (pull-ups, push-ups, squats, lunges) with double-progression suggestions, a daily
 workout picked from your last four weeks (what's due, what's recovered),

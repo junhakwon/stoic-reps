@@ -1,4 +1,4 @@
-// Stoic Reps: a small offline training log. All data stays on this device (localStorage), with JSON backup.
+// Unbowed (formerly Stoic Reps): a small offline training log. All data stays on this device (localStorage), with JSON backup.
 "use strict";
 
 // ---------- exercises ----------
@@ -16,7 +16,7 @@ const PULL_VAR = ["Standard", "L-sit"];              // pull-up types; each keep
 const VARS = { pullup: PULL_VAR, pushup: PUSH_VAR };
 const varName = (ex, v) => ex === "pullup" ? PULL_VAR[v] : PUSH_VAR[v].toLowerCase();
 const gtgV = () => ((S.settings.gtgVar || {}).pullup) || 0;   // type used by the quick pull-up button
-const KEY = "stoicreps.v1";
+const KEY = "stoicreps.v1";   // kept from the old name: your logs live under this key, so it must never change
 const BODYWEIGHT_DEFAULT = 67;
 
 function defaults() {
@@ -552,7 +552,7 @@ function render() {
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
 function homeView() {
   const d = curDay(), daily = S.daily[d] || {}, st = muscleState();
-  return `<div class="hdr"><h1>Stoic Reps</h1>
+  return `<div class="hdr"><h1>Unbowed</h1>
       <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
         <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
     ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
@@ -1212,7 +1212,7 @@ document.addEventListener("click", e => {
   }
   if (d.act === "export") {
     const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `stoic-reps-${dayKey()}.json`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `unbowed-${dayKey()}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000); return;
   }
   if (d.act === "import") { $("#imp").click(); return; }
@@ -1222,7 +1222,7 @@ document.addEventListener("change", e => {
   if (t.id === "imp" && t.files[0]) {
     t.files[0].text().then(txt => {
       const j = JSON.parse(txt);
-      if (!j || !Array.isArray(j.sets) || !j.settings) throw new Error("not a Stoic Reps backup");
+      if (!j || !Array.isArray(j.sets) || !j.settings) throw new Error("not an Unbowed (Stoic Reps) backup");
       S = fillIn(Object.assign(defaults(), j)); save(); toast(`Imported ${S.sets.length} sets`); render();
     }).catch(err => toast("Import failed: " + err.message, true));
     return;
