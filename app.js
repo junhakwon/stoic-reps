@@ -759,8 +759,10 @@ function widgetPayload() {
 const widgetBtn = () => S.settings.widgetOn ? `<button class="small-btn wbtn" data-act="widget-send" aria-label="Send to widget">⇪ Widget</button>` : "";
 function sendToWidget() {
   S.settings.widgetSent = Date.now(); save();
+  const json = JSON.stringify(widgetPayload());
+  try { navigator.clipboard.writeText(json).catch(() => {}); } catch (e) {}   // backup: the script also looks on the clipboard
   const a = document.createElement("a");
-  a.href = `scriptable:///run/${encodeURIComponent(WIDGET_SCRIPT)}?data=${encodeURIComponent(JSON.stringify(widgetPayload()))}`;
+  a.href = `scriptable:///run/${encodeURIComponent(WIDGET_SCRIPT)}?data=${encodeURIComponent(json)}`;
   document.body.appendChild(a); a.click(); a.remove();
 }
 // copy the widget script (Safari wants the copy to start inside the tap, so the fetch goes into a ClipboardItem)

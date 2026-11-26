@@ -17,13 +17,17 @@ const daysBetween = (a, b) => Math.round((keyToDate(b) - keyToDate(a)) / 864e5);
 
 // ---------- save what the app sent ----------
 const q = args.queryParameters || {};
-let justSent = false;
-if (q.data) {
-  try { const d = JSON.parse(q.data); if (d && d.v === 1) { fm.writeString(path, JSON.stringify(d)); justSent = true; } }
-  catch (e) { const a = new Alert(); a.title = "Unbowed"; a.message = "Couldn't read what the app sent. Try Send to widget again."; a.addAction("OK"); await a.present(); }
-}
-let data = null;
+let data = null, justSent = false;
 try { if (fm.fileExists(path)) data = JSON.parse(fm.readString(path)); } catch (e) {}
+const take = raw => {   // keep a summary from the app if it's newer than the one saved
+  try { const d = JSON.parse(raw); if (d && d.v === 1 && d.d && (!data || !(d.at < data.at))) { fm.writeString(path, JSON.stringify(d)); data = d; justSent = true; return true; } } catch (e) {}
+  return false;
+};
+if (q.data) take(q.data);
+// backup route: the app also copies the summary; when this script is opened in Scriptable without it, look on the clipboard
+if (!justSent && !config.runsInWidget && !config.runsInAccessoryWidget) {
+  try { const clip = Pasteboard.pasteString(); if (clip && clip.indexOf('"v":1') >= 0) take(clip); } catch (e) {}
+}
 
 // ---------- what to show, given how old the data is ----------
 function view(d) {
@@ -89,7 +93,9 @@ function listBlock(parent, v, max, size) {
 }
 function build(v, fam) {
   const w = new ListWidget();
-  const tomorrow = new Date(); tomorrow.setHours(24, 0, 5, 0); w.refreshAfterDate = tomorrow;   // redraw after midnight
+  // ask iPhone to redraw soon (it decides when; usually within 15 minutes), and right after midnight
+  const soon = new Date(Date.now() + 10 * 60000), midnight = new Date(); midnight.setHours(24, 0, 5, 0);
+  w.refreshAfterDate = soon < midnight ? soon : midnight;
   if (fam.startsWith("accessory")) {
     if (v.empty) { text(w, "Unbowed: tap Send to widget", 12, Color.white()); return w; }
     const left = v.items ? v.items.filter(i => i.s < 2) : [];
@@ -137,7 +143,13 @@ const v = view(data);
 if (config.runsInWidget || config.runsInAccessoryWidget) {
   Script.setWidget(build(v, config.widgetFamily || "medium"));
 } else {
-  // opened in Scriptable (or from the app): show the medium widget as a preview
+  // opened in Scriptable (or from the app): say what happened, then show the medium widget as a preview
+  if (justSent || v.empty) {
+    const a = new Alert(); a.title = justSent ? "Widget updated ✓" : "Nothing from Unbowed yet";
+    a.message = justSent ? "Your home-screen widget picks this up within a few minutes." :
+      "In Unbowed, go to More → Home-screen widget and tap Send to widget. This script must be named exactly Unbowed.";
+    a.addAction("OK"); await a.present();
+  }
   await build(v, "medium").presentMedium();
 }
 Script.complete();
