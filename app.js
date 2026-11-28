@@ -495,8 +495,8 @@ function runRow(st) {
 let handSport = "run";   // sport picked for a by-hand entry
 function openRunSheet() {
   $("#modal-body").innerHTML = `<div class="sheet-head"><h2>Add a run, swim or match</h2><button class="x" data-close-modal aria-label="Close">×</button></div>
-    <button class="big primary" data-act="run-paste">Paste from Health</button>
-    <p class="muted rhelp">Run the <b>Run to Stoic Reps</b> shortcut first. It copies today's run from Apple Health (synced from Garmin Connect).</p>
+    <button class="big primary" data-act="run-paste">Paste from Garmin or Health</button>
+    <p class="muted rhelp">First run a shortcut: <b>Garmin to Unbothered</b> copies your latest Garmin activity, exact (splits, heart rate, laps); <b>Run to Stoic Reps</b> copies today's run from Apple Health.</p>
     <div id="rn-pastebox" hidden><textarea id="rn-text" rows="3" placeholder="Paste here (touch and hold → Paste)"></textarea>
       <button class="big" data-act="run-paste-text">Add pasted run</button></div>
     <button class="big" data-act="run-file">Choose Garmin file</button><input id="run-file" type="file" hidden>
@@ -531,6 +531,16 @@ function addRun(r) {
   else if (first) setTimeout(() => suitUp(n), 60);
 }
 function addHealthRun(txt) {
+  // from the "Garmin to Unbothered" shortcut: your latest activity's original file (the zip Garmin serves), as base64
+  const m = /^\s*UNBOTHERED-FIT 1[^\n]*\n([^\n]*)\n([\s\S]+)$/.exec(txt || "");
+  if (m) {
+    let u;
+    try { const bin = atob(m[2].replace(/\s+/g, "")); u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); }
+    catch (e) { toast("The copied activity looks cut off. Run the shortcut again.", true); return; }
+    toast("Reading " + (m[1] || "your activity") + "…");
+    Garmin.parse("garmin.zip", u.buffer).then(addRun).catch(e => toast("Couldn't read that activity: " + e.message, true));
+    return;
+  }
   try { addRun(Garmin.fromHealth(txt, maxHr())); } catch (e) { toast(cap(e.message), true); }
 }
 function saveHandRun() {
