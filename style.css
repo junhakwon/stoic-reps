@@ -710,3 +710,21 @@ html[data-look] .ready { padding: 6px 12px 8px 4px; }
 .wcompact { padding: 10px 14px; }
 .wtitle { margin: 2px 0 6px; }
 html[data-look] #home-quote .quote { padding: 10px 46px 10px 14px; }
+
+/* ===== v42: cardio card (Run / Swim / Soccer, swipe between) ===== */
+.ccard { padding: 10px 12px 12px; margin-bottom: 10px; }
+.chead { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.chead .ctabs { flex: 1; margin: 0; }
+.chead .ctabs button { min-height: 40px; font-size: 13px; }
+.chead .cadd { flex: none; min-height: 40px; padding: 0 12px; white-space: nowrap; }
+.ccar { display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none; }
+.ccar::-webkit-scrollbar { display: none; }
+.cslide { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; min-width: 0; padding: 2px 2px 0; box-sizing: border-box; }
+.cwhen { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.cwhen b { color: var(--text); }
+.cstats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cstats div { display: flex; flex-direction: column; min-width: 0; }
+.cstats b { font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cstats span { font-size: 11px; color: var(--muted); }
+.cwk { margin: 8px 0 0; font-size: 12px; }
+.cempty { margin: 6px 0 4px; font-size: 14px; color: var(--muted); line-height: 1.4; }

@@ -518,7 +518,9 @@ function addRun(r) {
   if (dup) S.runs.splice(S.runs.indexOf(dup), 1);
   const k = dayKey(r.t), before = streak(), first = !dup && k === dayKey() && !activeDays().has(k);
   if (k === dayKey()) startRound(null, r);
-  S.runs.push(r); S.runs.sort((a, b) => a.t - b.t); save();
+  S.runs.push(r); S.runs.sort((a, b) => a.t - b.t);
+  { const ci = CARDIO.findIndex(c => c[0] === sportOf(r)); if (ci >= 0) S.settings.cardioAt = ci; }
+  save();
   if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtDist(r) + " in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
   $("#modal").hidden = true; pendingRunDel = null;
   // show the day the run went to
@@ -584,6 +586,7 @@ function render() {
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
   const car = $("#wcar"); if (car) { const cards = car.querySelectorAll(".wslide"), i = +car.dataset.at || 0;
     if (cards[i]) { car.style.scrollBehavior = "auto"; car.scrollLeft = cards[i].offsetLeft - cards[0].offsetLeft; car.style.scrollBehavior = ""; } }
+  const cc = $("#ccar"); if (cc) { cc.style.scrollBehavior = "auto"; cc.scrollLeft = (+cc.dataset.at || 0) * cc.clientWidth; cc.style.scrollBehavior = ""; }
 }
 
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
@@ -596,6 +599,7 @@ function homeView() {
     ${readyCard(st)}
     ${wodCard()}
     <div id="home-quote">${quoteCard(quoteOfDay())}</div>
+    ${logDay ? "" : cardioCard()}
     ${backupBanner()}
     ${pathCard()}
     ${restDayCard()}
@@ -1351,6 +1355,45 @@ function runTile(st) {
     <i class="tb" aria-hidden="true"><i style="width:${rec}%;background:${recColor(rec)}"></i></i></button>`;
 }
 
+// ---------- cardio on Train: Run / Swim / Soccer side by side; swipe between them or tap a tab ----------
+const CARDIO = [["run", "Run"], ["swim", "Swim"], ["soccer", "Soccer"]];
+const sportOf = r => /swim|openwater/.test(r.sport || "") ? "swim" : (r.sport || "run");
+function cardioSlide([k, name]) {
+  const all = S.runs.filter(r => sportOf(r) === k), last = all[all.length - 1];
+  const wk = all.filter(r => weekStart(dayKey(r.t)) === weekStart(dayKey()));
+  const stat = (v, l) => v ? '<div><b>' + v + '</b><span>' + l + '</span></div>' : "";
+  let body;
+  if (!last) body = '<p class="cempty">No ' + (k === "soccer" ? "soccer games" : name.toLowerCase() + "s") + ' yet. After a ' + (k === "soccer" ? "game" : name.toLowerCase())
+    + ', run the <b>Garmin to Unbothered</b> shortcut, then tap <b>+ Add</b> → <b>Paste</b>.</p>';
+  else {
+    const e = effortOf(last), when = dayLabel(dayKey(last.t)) + " · " + new Date(last.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const st = k === "run" ? stat(last.dist ? fmtKm(last.dist) : "", "km") + stat(fmtDur(last.dur), "time") + stat(paceOf(last).replace(" /km", ""), "per km") + stat(last.avgHr, "avg bpm")
+      : k === "swim" ? stat(last.dist ? last.dist.toLocaleString() : "", "metres") + stat(fmtDur(last.dur), "time") + stat(last.dist ? fmtDur(last.dur / (last.dist / 100)) : "", "per 100 m") + stat(last.swim && last.swim.lengths, "lengths")
+      : stat(fmtDur(last.dur), "time") + stat(last.dist ? fmtKm(last.dist) : "", "km covered") + stat(last.top ? (last.top * 3.6).toFixed(1) : "", "top km/h") + stat(last.sprints, "sprints");
+    const wkDist = wk.reduce((a, r) => a + (r.dist || 0), 0);
+    const wkLine = k === "soccer" ? wk.length + " game" + (wk.length === 1 ? "" : "s") + " this week" : wk.length + " this week" + (wkDist ? " · " + (k === "swim" ? wkDist.toLocaleString() + " m" : fmtKm(wkDist) + " km") : "");
+    body = '<p class="cwhen">' + (dayKey(last.t) === dayKey() ? "<b>Today</b> · " + new Date(last.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Last: " + when) + '</p><div class="cstats">' + st + '</div>'
+      + '<p class="muted cwk">' + (e ? "Effort <b>" + e + "</b> · " + effortWord(e) + " · " : "") + wkLine + '</p>';
+  }
+  return '<article class="cslide" data-sport="' + k + '" aria-label="' + name + '">' + body + '</article>';
+}
+function cardioCard() {
+  const order = CARDIO.map(c => c[0]), lastAny = S.runs.filter(r => order.includes(sportOf(r))).pop();
+  const at = S.settings.cardioAt != null ? S.settings.cardioAt : Math.max(0, order.indexOf(lastAny ? sportOf(lastAny) : "run"));
+  return '<div class="card ccard"><div class="chead"><div class="seg ctabs" role="tablist" aria-label="Cardio">'
+    + CARDIO.map(([k, nm], i) => '<button role="tab" data-ctab="' + i + '" class="' + (i === at ? "on" : "") + '" aria-selected="' + (i === at) + '">' + nm + '</button>').join("")
+    + '</div><button class="small-btn primary cadd" data-run-add aria-label="Add a run, swim or game">+ Add</button></div>'
+    + '<div class="ccar" id="ccar" data-at="' + at + '">' + CARDIO.map(cardioSlide).join("") + '</div></div>';
+}
+// the tab follows the swipe, and the app remembers which one you were on
+let ccarT = 0;
+function ccarSync(el) {
+  const i = Math.round(el.scrollLeft / (el.clientWidth || 1));
+  el.closest(".ccard").querySelectorAll("[data-ctab]").forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i); });
+  el.dataset.at = i; if (S.settings.cardioAt !== i) { S.settings.cardioAt = i; save(); }
+}
+document.addEventListener("scroll", e => { if (e.target && e.target.id === "ccar") { clearTimeout(ccarT); ccarT = setTimeout(() => ccarSync(e.target), 90); } }, true);
+
 // under an exercise: its least-recovered muscle, when under 60%
 function recNote(ex, st) {
   const m = (ex === "run" ? ["quads", "calves"] : MUSCLE_OF[ex]).reduce((a, b) => st[b].rec < st[a].rec ? b : a);
@@ -1761,7 +1804,7 @@ document.addEventListener("touchend", e => {
   if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6 || !el.closest) return;
   const row = el.closest(".wmv"); if (row) { if (dx > 0 && !row.classList.contains("on")) row.click(); return; }   // swipe a move right: done
   if (!$("#modal").hidden || !$("#sheet").hidden) return;
-  if (el.closest(".wcar, .chips, .qseg, .seg, .qtype, .looks, input, select, textarea")) return;   // these slide or scroll sideways themselves
+  if (el.closest(".wcar, .ccar, .chips, .qseg, .seg, .qtype, .looks, input, select, textarea")) return;   // these slide or scroll sideways themselves
   const i = seqIndex(), j = i + (dx < 0 ? 1 : -1);
   if (j >= 0 && j < SWIPE_SEQ.length) goSeq(j, dx < 0 ? 1 : -1);
 }, { passive: true });
@@ -1783,6 +1826,7 @@ document.addEventListener("click", e => {
   if (d.act === "widget-send") { S.settings.widgetOn = true; sendToWidget(); return; }
   if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "next-open") { nextOpen = true; render(); return; }
+  if (d.ctab !== undefined) { const c = $("#ccar"), i = +d.ctab; if (c) c.scrollTo({ left: i * c.clientWidth, behavior: "smooth" }); return; }
   if (d.act === "wod-pick") { wodPicker(); return; }
   if (d.wpick) { wodDay().wodId = d.wpick; save(); $("#modal").hidden = true; render(); window.scrollTo(0, 0); return; }
   if (d.wfil) { wodFilter = d.wfil; wodPicker(); return; }
