@@ -644,11 +644,14 @@ function readyCard(st) {
   const msg = !tired.length ? (fresh.length === 3 ? "Fresh all over. Ready for anything." : "Good to train.")
     : tired.length === 3 ? "Rest is training too, today."
     : `${fresh.length ? `${cap(join(fresh))} ${plural(fresh) ? "are" : "is"} fresh.<br>` : ""}<span class="tired">${cap(join(tired))} need${plural(tired) ? "" : "s"} a day.</span>`;
-  const dash = (314 * all / 100).toFixed(1);
+  // readiness as an HP bar: green, yellow under 50, red (flashing) under 20; the pale chunk is what today's training took off
+  const startHp = readiness(recovery(keyToDate(dayKey()).getTime())), hit = Math.max(0, startHp - all);
+  const hpTone = all < 20 ? "low" : all < 50 ? "mid" : "ok";
   return `<div class="card ready">${bodySvg(st, "mini")}
-    <div class="rside"><div class="gauge" role="img" aria-label="${all}% ready"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" class="gt"/>
-        <circle cx="60" cy="60" r="50" class="gv" style="stroke:${all < 50 ? "var(--warn)" : "var(--accent)"}" stroke-dasharray="${dash} 314" transform="rotate(-90 60 60)"/></svg>
-        <div><b>${all}%</b><span>READY</span></div></div>
+    <div class="rside"><div class="hp hp-${hpTone}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${all}" aria-label="HP ${all} of 100${hit ? `, ${hit} lost to today's training` : ""}">
+        <div class="hptop"><b class="hptag">HP</b><span class="hpnum"><b>${all}</b>/100</span></div>
+        <div class="hpbar"><i class="hphit" style="width:${Math.min(100, all + hit)}%"></i><i class="hpfill" style="width:${all}%"></i><span class="hpticks" aria-hidden="true"></span></div>
+        ${hit ? `<span class="hpdmg">−${hit} today</span>` : ""}</div>
       <p class="rmsg">${msg}</p>
       <div class="rbars">${G.map(([n, v]) => `<div><span>${n === "upper body" ? "Upper" : cap(n)}</span><i><i style="width:${v}%;background:${recColor(v)}"></i></i><b style="${v < 40 ? "color:var(--warn)" : ""}">${v}</b></div>`).join("")}</div>${tickRow()}</div></div>`;
 }
