@@ -519,7 +519,7 @@ function addRun(r) {
   const k = dayKey(r.t), before = streak(), first = !dup && k === dayKey() && !activeDays().has(k);
   if (k === dayKey()) startRound(null, r);
   S.runs.push(r); S.runs.sort((a, b) => a.t - b.t);
-  { const ci = CARDIO.findIndex(c => c[0] === sportOf(r)); if (ci >= 0) S.settings.cardioAt = ci; }
+  { const ci = CARDIO.findIndex(c => c[0] === sportOf(r)); if (ci >= 0) { S.settings.cardioAt = ci; chistAt[sportOf(r)] = 0; setPanel("cardio"); } }
   save();
   if (dup) { $("#modal").hidden = true; render(); toast(`Replaced with the Garmin file: ${r.dist ? fmtDist(r) + " in " : ""}${fmtDur(r.dur)}${r.avgHr ? `, avg ${r.avgHr} bpm` : ""}`); return; }
   $("#modal").hidden = true; pendingRunDel = null;
@@ -587,28 +587,46 @@ function render() {
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
   const car = $("#wcar"); if (car) { const cards = car.querySelectorAll(".wslide"), i = +car.dataset.at || 0;
     if (cards[i]) { car.style.scrollBehavior = "auto"; car.scrollLeft = cards[i].offsetLeft - cards[0].offsetLeft; car.style.scrollBehavior = ""; } }
-  const cc = $("#ccar"); if (cc) { cc.style.scrollBehavior = "auto"; cc.scrollLeft = (+cc.dataset.at || 0) * cc.clientWidth; cc.style.scrollBehavior = ""; }
+  const hc = $("#hcar"); if (hc) { hc.style.scrollBehavior = "auto"; hc.scrollLeft = (+hc.dataset.at || 0) * hc.clientWidth; hc.style.scrollBehavior = ""; }
 }
 
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
+// Train (v44): one screen. Spider-Man and readiness on top, a switcher (WOD · Cardio · Lifts · Streak) that shows one area at
+// a time, the quote at the bottom. Swipe sideways or tap to move between the areas. Nothing was taken out, only grouped.
+const PANELS = [["wod", "WOD"], ["cardio", "Cardio"], ["lifts", "Lifts"], ["streak", "Streak"]];
+const panelNow = () => { const st = S.settings; return st.panelDay === dayKey() && PANELS.some(x => x[0] === st.panel) ? st.panel : "wod"; };   // a new day opens on the WOD
+const setPanel = p => { S.settings.panel = p; S.settings.panelDay = dayKey(); };
+function panelBadge(k) {
+  const d = curDay();
+  if (k === "wod") return S.wods.some(x => dayKey(x.t) === d) ? "✓" : wodDay().wodRun ? "●" : "";
+  if (k === "cardio") { const c = S.runs.filter(r => dayKey(r.t) === d).length; return c ? String(c) : ""; }
+  if (k === "lifts") { const c = S.sets.filter(x => dayKey(x.t) === d).length; return c ? String(c) : ""; }
+  const c = streakInfo().n; return c ? String(c) : "";
+}
+const pastNote = name => '<div class="card empty"><p>' + name + " lives on today. You're looking at " + dayLabel(curDay()) + '.</p><button class="small-btn primary" data-day="0">Back to today</button></div>';
+function panelHtml(k, st) {
+  if (k === "wod") return logDay ? pastNote("The WOD") : wodCard();
+  if (k === "cardio") return logDay ? pastNote("Cardio") : cardioCard();
+  if (k === "lifts") return '<div class="tiles">' + Object.keys(EX).map(x => tile(x, st)).join("") + '</div>' + quickBar()
+    + (logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard()));
+  return pathCard() + restDayCard();
+}
+function backupChip() {
+  const st = S.settings, every = st.backupEvery ?? 7;
+  if (!every || logDay || Date.now() - (st.lastBackup || 0) < every * 864e5 || (!S.sets.length && !S.runs.length && !S.wods.length)) return "";
+  return '<button class="hchip" data-act="backup" aria-label="Back up your training (it lives only on this phone)">Back up</button>';
+}
 function homeView() {
-  const d = curDay(), daily = S.daily[d] || {}, st = muscleState();
-  return `<div class="hdr"><h1>Unbothered</h1>
-      <div class="dayctl ${logDay ? "past" : ""}"><button data-day="-1" aria-label="Previous day" ${d <= addDays(dayKey(), -30) ? "disabled" : ""}>‹</button>
-        <span>${dayLabel(d)}</span><button data-day="1" aria-label="Next day" ${logDay ? "" : "disabled"}>›</button></div></div>
-    ${logDay ? `<p class="muted daynote">Creatine, protein and any sets you log now go to ${dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)}. <button class="link" data-day="0">Back to today</button></p>` : ""}
-    ${readyCard(st)}
-    ${wodCard()}
-    <div id="home-quote">${quoteCard(quoteOfDay())}</div>
-    ${logDay ? "" : cardioCard()}
-    ${backupBanner()}
-    ${pathCard()}
-    ${restDayCard()}
-    ${logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard())}
-    <h3 class="sec">All exercises</h3>
-    <div class="tiles">${Object.keys(EX).map(k => tile(k, st)).join("")}${runTile(st)}</div>
-    ${S.runs.filter(r => dayKey(r.t) === d).map(runCard).join("")}
-    ${quickBar()}`;
+  const d = curDay(), st = muscleState(), p = panelNow();
+  return '<div class="hdr"><h1>Unbothered</h1>' + backupChip()
+    + '<div class="dayctl ' + (logDay ? "past" : "") + '"><button data-day="-1" aria-label="Previous day" ' + (d <= addDays(dayKey(), -30) ? "disabled" : "") + '>‹</button>'
+    + '<span>' + dayLabel(d) + '</span><button data-day="1" aria-label="Next day" ' + (logDay ? "" : "disabled") + '>›</button></div></div>'
+    + (logDay ? '<p class="muted daynote">Creatine, protein and any sets you log now go to ' + (dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)) + '. <button class="link" data-day="0">Back to today</button></p>' : "")
+    + readyCard(st)
+    + '<div class="dock" role="tablist" aria-label="Today">' + PANELS.map(([k, nm]) => { const b = panelBadge(k);
+        return '<button role="tab" id="tab-' + k + '" aria-controls="panel" data-panel="' + k + '" class="' + (k === p ? "on" : "") + '" aria-selected="' + (k === p) + '"><span>' + nm + '</span>' + (b ? '<em>' + b + '</em>' : "") + '</button>'; }).join("") + '</div>'
+    + '<div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-' + p + '" data-p="' + p + '">' + panelHtml(p, st) + '</div>'
+    + '<div id="home-quote">' + quoteCard(quoteOfDay()) + '</div>';
 }
 const recColor = v => v >= 70 ? "var(--good)" : v >= 40 ? "var(--rec-mid, var(--accent))" : "var(--rec-low, var(--warn))";   // a look can recolour mid and low
 // creatine and protein: one tap each, inside the readiness card
@@ -1384,7 +1402,7 @@ async function importGarminBatch(txt) {
   if (added.length) {
     S.runs.sort((a, b) => a.t - b.t);
     const newest = added.reduce((a, b) => b.t > a.t ? b : a), ci = CARDIO.findIndex(c => c[0] === sportOf(newest));
-    if (ci >= 0) S.settings.cardioAt = ci;
+    if (ci >= 0) { S.settings.cardioAt = ci; chistAt[sportOf(newest)] = 0; setPanel("cardio"); }
     flashAt = Date.now(); flashM = RUN_MUSCLES[newest.sport] || RUN_MUSCLES.run; flashWord = "ZOOM!";
   }
   save(); $("#modal").hidden = true; logDay = null; tab = "home"; render();
@@ -1411,43 +1429,37 @@ const garminPendingNow = () => S.settings.garminPending && Date.now() - S.settin
 // ---------- cardio on Train: Run / Swim / Soccer side by side; swipe between them or tap a tab ----------
 const CARDIO = [["run", "Run"], ["swim", "Swim"], ["soccer", "Soccer"]];
 const sportOf = r => /swim|openwater/.test(r.sport || "") ? "swim" : (r.sport || "run");
-function cardioSlide([k, name]) {
-  const all = S.runs.filter(r => sportOf(r) === k), last = all[all.length - 1];
-  const wk = all.filter(r => weekStart(dayKey(r.t)) === weekStart(dayKey()));
-  const stat = (v, l) => v ? '<div><b>' + v + '</b><span>' + l + '</span></div>' : "";
-  let body;
-  if (!last) body = '<p class="cempty">No ' + (k === "soccer" ? "soccer games" : name.toLowerCase() + "s") + ' yet. After a ' + (k === "soccer" ? "game" : name.toLowerCase())
-    + ', run the <b>Garmin to Unbothered</b> shortcut, then tap <b>+ Add</b> → <b>Paste</b>.</p>';
-  else {
-    const e = effortOf(last), when = dayLabel(dayKey(last.t)) + " · " + new Date(last.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const st = k === "run" ? stat(last.dist ? fmtKm(last.dist) : "", "km") + stat(fmtDur(last.dur), "time") + stat(paceOf(last).replace(" /km", ""), "per km") + stat(last.avgHr, "avg bpm")
-      : k === "swim" ? stat(last.dist ? last.dist.toLocaleString() : "", "metres") + stat(fmtDur(last.dur), "time") + stat(last.dist ? fmtDur(last.dur / (last.dist / 100)) : "", "per 100 m") + stat(last.swim && last.swim.lengths, "lengths")
-      : stat(fmtDur(last.dur), "time") + stat(last.dist ? fmtKm(last.dist) : "", "km covered") + stat(last.top ? (last.top * 3.6).toFixed(1) : "", "top km/h") + stat(last.sprints, "sprints");
-    const wkDist = wk.reduce((a, r) => a + (r.dist || 0), 0);
-    const wkLine = k === "soccer" ? wk.length + " game" + (wk.length === 1 ? "" : "s") + " this week" : wk.length + " this week" + (wkDist ? " · " + (k === "swim" ? wkDist.toLocaleString() + " m" : fmtKm(wkDist) + " km") : "");
-    body = '<p class="cwhen">' + (dayKey(last.t) === dayKey() ? "<b>Today</b> · " + new Date(last.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Last: " + when) + '</p><div class="cstats">' + st + '</div>'
-      + '<p class="muted cwk">' + (e ? "Effort <b>" + e + "</b> · " + effortWord(e) + " · " : "") + wkLine + '</p>';
-  }
-  return '<article class="cslide" data-sport="' + k + '" aria-label="' + name + '">' + body + '</article>';
-}
+const chistAt = {};   // which activity each sport's history shows (0 = the latest), kept while the app is open
 function cardioCard() {
   const order = CARDIO.map(c => c[0]), lastAny = S.runs.filter(r => order.includes(sportOf(r))).pop();
   const at = S.settings.cardioAt != null ? S.settings.cardioAt : Math.max(0, order.indexOf(lastAny ? sportOf(lastAny) : "run"));
-  return '<div class="card ccard"><div class="chead"><div class="seg ctabs" role="tablist" aria-label="Cardio">'
-    + CARDIO.map(([k, nm], i) => '<button role="tab" data-ctab="' + i + '" class="' + (i === at ? "on" : "") + '" aria-selected="' + (i === at) + '">' + nm + '</button>').join("")
+  const [k, name] = CARDIO[at] || CARDIO[0], all = S.runs.filter(r => sportOf(r) === k).slice().reverse();
+  const wk = all.filter(r => weekStart(dayKey(r.t)) === weekStart(dayKey())), wkDist = wk.reduce((a, r) => a + (r.dist || 0), 0);
+  const sum = all.length ? (k === "soccer" ? wk.length + " game" + (wk.length === 1 ? "" : "s") : wk.length + " " + name.toLowerCase() + (wk.length === 1 ? "" : "s")) + " this week"
+    + (wkDist && k !== "soccer" ? " · " + (k === "swim" ? wkDist.toLocaleString() + " m" : fmtKm(wkDist) + " km") : "") + " · " + all.length + " in all" : "";
+  const i = Math.min(chistAt[k] || 0, Math.max(0, all.length - 1));
+  const slides = all.length ? all.map((r, j) => '<article class="hslide" aria-label="' + (j === 0 ? "Latest" : (j + 1) + " of " + all.length) + '"><p class="hwhen"><b>'
+      + (j === 0 ? "Latest" : (j + 1) + " of " + all.length) + '</b> · ' + dayLabel(dayKey(r.t)) + '</p>' + runCard(r) + '</article>').join("")
+    : '<p class="cempty">No ' + (k === "soccer" ? "soccer games" : name.toLowerCase() + "s") + ' yet. Tap <b>⟳ Sync from Garmin</b> below after a ' + (k === "soccer" ? "game" : name.toLowerCase()) + '.</p>';
+  return '<div class="card ccard"><div class="chead"><div class="seg ctabs" role="tablist" aria-label="Sport">'
+    + CARDIO.map(([kk, nm], j) => '<button role="tab" data-ctab="' + j + '" class="' + (j === at ? "on" : "") + '" aria-selected="' + (j === at) + '">' + nm + '</button>').join("")
     + '</div><button class="small-btn primary cadd" data-run-add aria-label="Add a run, swim or game">+ Add</button></div>'
-    + '<div class="ccar" id="ccar" data-at="' + at + '">' + CARDIO.map(cardioSlide).join("") + '</div>'
+    + (sum ? '<p class="muted cwk">' + sum + '</p>' : "")
+    + '<div class="hcar" id="hcar" data-sport="' + k + '" data-at="' + i + '">' + slides + '</div>'
+    + (all.length > 1 ? '<div class="hnav"><button class="link" data-hnav="-1"' + (i === 0 ? " disabled" : "") + '>‹ Newer</button><span id="hpos">' + (i + 1) + ' / ' + all.length
+      + '</span><button class="link" data-hnav="1"' + (i === all.length - 1 ? " disabled" : "") + '>Older ›</button></div>' : "")
     + '<div class="csync">' + (garminPendingNow() ? '<button class="big primary" data-act="run-paste">Add what Garmin sent</button><button class="link" data-act="garmin-sync">Run the Garmin shortcut again</button>'
       : '<button class="big" data-act="garmin-sync">⟳ Sync from Garmin</button>') + '</div></div>';
 }
-// the tab follows the swipe, and the app remembers which one you were on
-let ccarT = 0;
-function ccarSync(el) {
-  const i = Math.round(el.scrollLeft / (el.clientWidth || 1));
-  el.closest(".ccard").querySelectorAll("[data-ctab]").forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i); });
-  el.dataset.at = i; if (S.settings.cardioAt !== i) { S.settings.cardioAt = i; save(); }
+// the counter and the Newer / Older buttons follow the swipe
+let hcarT = 0;
+function hcarSync(el) {
+  const i = Math.round(el.scrollLeft / (el.clientWidth || 1)), tot = el.querySelectorAll(".hslide").length;
+  chistAt[el.dataset.sport] = i; el.dataset.at = i;
+  const pos = $("#hpos"); if (pos) pos.textContent = (i + 1) + " / " + tot;
+  document.querySelectorAll("[data-hnav]").forEach(b => { b.disabled = +b.dataset.hnav < 0 ? i === 0 : i >= tot - 1; });
 }
-document.addEventListener("scroll", e => { if (e.target && e.target.id === "ccar") { clearTimeout(ccarT); ccarT = setTimeout(() => ccarSync(e.target), 90); } }, true);
+document.addEventListener("scroll", e => { if (e.target && e.target.id === "hcar") { clearTimeout(hcarT); hcarT = setTimeout(() => hcarSync(e.target), 80); } }, true);
 
 // under an exercise: its least-recovered muscle, when under 60%
 function recNote(ex, st) {
@@ -1840,8 +1852,8 @@ function moreView() {
 }
 
 // ---------- swipes: between screens, through the WOD cards (the carousel scrolls itself), and to tick a move ----------
-const SWIPE_SEQ = [["home"], ["progress", "body"], ["progress", "lifts"], ["progress", "cardio"], ["more"]];
-const seqIndex = () => tab === "progress" ? SWIPE_SEQ.findIndex(x => x[1] === (S.settings.progTab || "body")) : SWIPE_SEQ.findIndex(x => x[0] === tab);
+const SWIPE_SEQ = [["home", "wod"], ["home", "cardio"], ["home", "lifts"], ["home", "streak"], ["progress", "body"], ["progress", "lifts"], ["progress", "cardio"], ["more"]];
+const seqIndex = () => tab === "home" ? SWIPE_SEQ.findIndex(x => x[0] === "home" && x[1] === panelNow()) : tab === "progress" ? SWIPE_SEQ.findIndex(x => x[0] === "progress" && x[1] === (S.settings.progTab || "body")) : SWIPE_SEQ.findIndex(x => x[0] === tab);
 let slideT = 0;
 function slideIn(dir) {   // the new screen slides in from the side it came from, its cards rising one after another
   const v = $("#view"); v.classList.remove("in-l", "in-r", "enter"); void v.offsetWidth;
@@ -1849,8 +1861,14 @@ function slideIn(dir) {   // the new screen slides in from the side it came from
 }
 function goSeq(i, dir) {
   const x = SWIPE_SEQ[i]; if (!x) return;
-  tab = x[0]; if (x[1]) S.settings.progTab = x[1];
-  save(); slideIn(dir); render(); window.scrollTo(0, 0);
+  const within = tab === "home" && x[0] === "home";   // between Train areas only the area slides; the page stays put
+  tab = x[0]; if (x[0] === "home") setPanel(x[1]); else if (x[1]) S.settings.progTab = x[1];
+  save(); if (within) { render(); panelIn(dir); } else { slideIn(dir); render(); window.scrollTo(0, 0); }
+}
+let panelT = 0;
+function panelIn(dir) {   // the new area slides in from the side it came from
+  const p = $("#panel"); if (!p) return; p.classList.remove("in-l", "in-r"); void p.offsetWidth;
+  p.classList.add(dir > 0 ? "in-l" : "in-r"); clearTimeout(panelT); panelT = setTimeout(() => p.classList.remove("in-l", "in-r"), 500);
 }
 let touch = null;
 document.addEventListener("touchstart", e => {
@@ -1863,7 +1881,7 @@ document.addEventListener("touchend", e => {
   if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6 || !el.closest) return;
   const row = el.closest(".wmv"); if (row) { if (dx > 0 && !row.classList.contains("on")) row.click(); return; }   // swipe a move right: done
   if (!$("#modal").hidden || !$("#sheet").hidden) return;
-  if (el.closest(".wcar, .ccar, .chips, .qseg, .seg, .qtype, .looks, input, select, textarea")) return;   // these slide or scroll sideways themselves
+  if (el.closest(".wcar, .hcar, .chips, .qseg, .seg, .qtype, .looks, .tiles, input, select, textarea")) return;   // these slide or scroll sideways themselves
   const i = seqIndex(), j = i + (dx < 0 ? 1 : -1);
   if (j >= 0 && j < SWIPE_SEQ.length) goSeq(j, dx < 0 ? 1 : -1);
 }, { passive: true });
@@ -1885,7 +1903,9 @@ document.addEventListener("click", e => {
   if (d.act === "widget-send") { S.settings.widgetOn = true; sendToWidget(); return; }
   if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "next-open") { nextOpen = true; render(); return; }
-  if (d.ctab !== undefined) { const c = $("#ccar"), i = +d.ctab; if (c) c.scrollTo({ left: i * c.clientWidth, behavior: "smooth" }); return; }
+  if (d.ctab !== undefined) { S.settings.cardioAt = +d.ctab; save(); render(); return; }
+  if (d.hnav !== undefined) { const c = $("#hcar"); if (c) c.scrollTo({ left: Math.max(0, (Math.round(c.scrollLeft / c.clientWidth) + +d.hnav)) * c.clientWidth, behavior: "smooth" }); return; }
+  if (d.panel) { const was = seqIndex(); setPanel(d.panel); save(); render(); panelIn(seqIndex() >= was ? 1 : -1); return; }
   if (d.act === "garmin-sync") { garminSync(); return; }
   if (d.act === "garmin-auto") { S.settings.garminAuto = S.settings.garminAuto === false; save(); render(); return; }
   if (d.act === "wod-pick") { wodPicker(); return; }
