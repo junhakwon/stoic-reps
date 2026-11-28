@@ -533,6 +533,7 @@ function addRun(r) {
   else if (first) setTimeout(() => suitUp(n), 60);
 }
 function addHealthRun(txt) {
+  if (/^\s*UNBOTHERED-FIT 2/.test(txt || "")) { importGarminBatch(txt); return; }   // shortcut v4: several activities
   // from the "Garmin to Unbothered" shortcut: your latest activity's original file (the zip Garmin serves), as base64
   const m = /^\s*UNBOTHERED-FIT 1[^\n]*\n([^\n]*)\n([\s\S]+)$/.exec(txt || "");
   if (m) {
@@ -1355,6 +1356,58 @@ function runTile(st) {
     <i class="tb" aria-hidden="true"><i style="width:${rec}%;background:${recColor(rec)}"></i></i></button>`;
 }
 
+// ---------- Garmin: the "Garmin to Unbothered" shortcut copies your latest activities; the app adds the new ones ----------
+// A web app can't reach Garmin itself (Garmin doesn't allow web pages to read its replies), so the shortcut fetches the
+// files and copies them; coming back, one tap (iOS asks before a web app reads the clipboard) adds them.
+const GARMIN_SPORTS = ["run", "walk", "hike", "ride", "swim", "openwater", "soccer"];
+function runDup(r) {
+  const same = x => (x.sport || "run") === (r.sport || "run") || x.sport === "activity" || r.sport === "activity";
+  return S.runs.find(x => same(x) && (Math.abs(x.t - r.t) < 5 * 60000 || (x.t < r.t + r.dur * 1000 && r.t < x.t + x.dur * 1000)));
+}
+function b64bytes(b) { const bin = atob(b.replace(/\s+/g, "")), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function importGarminBatch(txt) {
+  const blocks = txt.replace(/\r\n/g, "\n").split(/\n==[^\n]*\n/).slice(1).map(x => x.trim()).filter(Boolean);
+  if (!blocks.length) { toast("Nothing from Garmin on the clipboard. Run the Garmin shortcut again.", true); return; }
+  toast("Reading " + blocks.length + " Garmin activit" + (blocks.length === 1 ? "y" : "ies") + "…");
+  const parsed = await Promise.all(blocks.map(b => { try { return Garmin.parse("garmin.zip", b64bytes(b).buffer).catch(() => null); } catch (e) { return Promise.resolve(null); } }));
+  const FILE = ["fit", "gpx", "tcx"], added = [], skip = { have: 0, other: 0, bad: 0 }, before = streak();
+  for (const r of parsed) {
+    if (!r) { skip.bad++; continue; }
+    if (!GARMIN_SPORTS.includes(r.sport)) { skip.other++; continue; }   // strength sessions etc. are logged in the app itself
+    const dup = runDup(r);
+    if (dup && FILE.includes(dup.src)) { skip.have++; continue; }
+    if (dup) S.runs.splice(S.runs.indexOf(dup), 1);                   // a Garmin file replaces an Apple Health / by-hand entry
+    if (dayKey(r.t) === dayKey()) startRound(null, r);
+    S.runs.push(r); added.push(r);
+  }
+  S.settings.garminPending = 0; if (added.length || skip.have) S.settings.garminOk = Date.now();
+  if (added.length) {
+    S.runs.sort((a, b) => a.t - b.t);
+    const newest = added.reduce((a, b) => b.t > a.t ? b : a), ci = CARDIO.findIndex(c => c[0] === sportOf(newest));
+    if (ci >= 0) S.settings.cardioAt = ci;
+    flashAt = Date.now(); flashM = RUN_MUSCLES[newest.sport] || RUN_MUSCLES.run; flashWord = "ZOOM!";
+  }
+  save(); $("#modal").hidden = true; logDay = null; tab = "home"; render();
+  const names = added.map(r => cap(KIND[r.sport] || r.sport)).join(", ");
+  toast(added.length ? "Added from Garmin: " + names + (skip.have ? " · " + skip.have + " already in" : "")
+    : "Nothing new from Garmin" + (skip.have ? " (" + skip.have + " already in)" : "") + (skip.other ? " · " + skip.other + " skipped (strength etc.)" : "") + (skip.bad ? " · " + skip.bad + " unreadable" : ""), !added.length && skip.bad > 0);
+  const nn = streak(); if (nn > before) { const r0 = rankOf(before), r1 = rankOf(nn); if (r1.name !== r0.name && r1.from > 0) setTimeout(() => rankCard(r1, nn), 60); }
+}
+const garminName = () => (S.settings.garminShortcut || "").trim() || "Garmin to Unbothered";
+function garminSync() {   // opens the shortcut; coming back, the Cardio card offers "Add what Garmin sent"
+  S.settings.garminPending = Date.now(); S.settings.garminAutoAt = Date.now(); save();
+  location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(garminName());
+  setTimeout(render, 600);
+}
+// when the app opens: open the shortcut by itself, at most every 3 hours, and only once it has worked for you (so a missing
+// shortcut never bounces you to an error); off under More → Garmin
+function garminAuto() {
+  const st = S.settings; if (st.garminAuto === false || !st.garminOk || logDay || tab !== "home") return;
+  if (Date.now() - (st.garminAutoAt || 0) < 3 * 36e5 || (st.garminPending && Date.now() - st.garminPending < 30 * 60000)) return;
+  garminSync();
+}
+const garminPendingNow = () => S.settings.garminPending && Date.now() - S.settings.garminPending < 30 * 60000;
+
 // ---------- cardio on Train: Run / Swim / Soccer side by side; swipe between them or tap a tab ----------
 const CARDIO = [["run", "Run"], ["swim", "Swim"], ["soccer", "Soccer"]];
 const sportOf = r => /swim|openwater/.test(r.sport || "") ? "swim" : (r.sport || "run");
@@ -1383,7 +1436,9 @@ function cardioCard() {
   return '<div class="card ccard"><div class="chead"><div class="seg ctabs" role="tablist" aria-label="Cardio">'
     + CARDIO.map(([k, nm], i) => '<button role="tab" data-ctab="' + i + '" class="' + (i === at ? "on" : "") + '" aria-selected="' + (i === at) + '">' + nm + '</button>').join("")
     + '</div><button class="small-btn primary cadd" data-run-add aria-label="Add a run, swim or game">+ Add</button></div>'
-    + '<div class="ccar" id="ccar" data-at="' + at + '">' + CARDIO.map(cardioSlide).join("") + '</div></div>';
+    + '<div class="ccar" id="ccar" data-at="' + at + '">' + CARDIO.map(cardioSlide).join("") + '</div>'
+    + '<div class="csync">' + (garminPendingNow() ? '<button class="big primary" data-act="run-paste">Add what Garmin sent</button><button class="link" data-act="garmin-sync">Run the Garmin shortcut again</button>'
+      : '<button class="big" data-act="garmin-sync">⟳ Sync from Garmin</button>') + '</div></div>';
 }
 // the tab follows the swipe, and the app remembers which one you were on
 let ccarT = 0;
@@ -1765,6 +1820,10 @@ function moreView() {
       <div class="inrow"><label>Remind me every</label><select data-backup-every aria-label="Backup reminder">${[[1, "day"], [3, "3 days"], [7, "week"], [14, "2 weeks"], [0, "never"]].map(([v, l]) => `<option value="${v}"${(st.backupEvery ?? 7) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
       <p class="muted fnote">Last backup: ${st.lastBackup ? `${dayLabel(dayKey(st.lastBackup))} (${agoMin(st.lastBackup)})` : "never"}. Each backup is two files: <b>unbothered-….json</b> (everything, for Import) and <b>unbothered-activities-….csv</b> (laid out like Garmin Connect's activity export: runs, swims, games, WODs and each day's strength work). Save them to iCloud Drive or Files.</p>
       <div class="btn2"><button class="big" data-act="export">JSON only</button><button class="big" data-act="import">Import…</button></div><input id="imp" type="file" accept="application/json,.json" hidden></div>
+    <h3>Garmin</h3><div class="card">
+      <div class="inrow"><label for="g-name">Shortcut name</label><input id="g-name" type="text" data-garmin-name value="${esc(garminName())}" style="width:58%"></div>
+      <div class="inrow"><label>Open it when I open the app</label><button class="small-btn${st.garminAuto === false ? "" : " primary"}" data-act="garmin-auto" aria-pressed="${st.garminAuto !== false}">${st.garminAuto === false ? "Off" : "On"}</button></div>
+      <p class="muted fnote">At most every 3 hours, and only after a sync has worked once. The shortcut copies your 5 latest Garmin activities; back here, tap <b>Add what Garmin sent</b>. ${st.garminOk ? `Last Garmin sync: ${agoMin(st.garminOk)}.` : "No Garmin sync yet."}</p></div>
     <h3>Body weight</h3><div class="card">
       <div class="inrow bwin"><label for="bw-in">Today</label><input id="bw-in" type="number" inputmode="decimal" step="0.1" placeholder="${fmtKg(bwOn(today))}" value="${S.body[today] ?? ""}"><span class="unit">kg</span><button class="small-btn primary" data-act="bw">Save</button></div>
       ${bwRows}${bwKeys.length > 1 ? `<button class="link morelink" data-act="bw-trend">See the trend in Progress ›</button>` : ""}</div>
@@ -1827,6 +1886,8 @@ document.addEventListener("click", e => {
   if (d.act === "widget-copy") { copyWidgetScript(); return; }
   if (d.act === "next-open") { nextOpen = true; render(); return; }
   if (d.ctab !== undefined) { const c = $("#ccar"), i = +d.ctab; if (c) c.scrollTo({ left: i * c.clientWidth, behavior: "smooth" }); return; }
+  if (d.act === "garmin-sync") { garminSync(); return; }
+  if (d.act === "garmin-auto") { S.settings.garminAuto = S.settings.garminAuto === false; save(); render(); return; }
   if (d.act === "wod-pick") { wodPicker(); return; }
   if (d.wpick) { wodDay().wodId = d.wpick; save(); $("#modal").hidden = true; render(); window.scrollTo(0, 0); return; }
   if (d.wfil) { wodFilter = d.wfil; wodPicker(); return; }
@@ -1846,7 +1907,7 @@ document.addEventListener("click", e => {
   if (d.goday) { logDay = d.goday === dayKey() ? null : d.goday; tab = "home"; render(); const c = document.querySelector(".runcard"); if (c) c.scrollIntoView({ block: "center" }); return; }
   if (d.act === "run-save") { saveHandRun(); return; }
   if (d.act === "run-paste") {   // read the shortcut's text from the clipboard; if the phone won't allow it, show a box to paste into
-    const box = () => { $("#rn-pastebox").hidden = false; $("#rn-text").focus(); };
+    const box = () => { if (!$("#rn-pastebox")) openRunSheet(); $("#rn-pastebox").hidden = false; $("#rn-text").focus(); };
     if (!navigator.clipboard || !navigator.clipboard.readText) { box(); return; }
     const wait = setTimeout(box, 3000);   // no answer (prompt ignored): offer the box too
     navigator.clipboard.readText().then(t => { clearTimeout(wait); addHealthRun(t); }, () => { clearTimeout(wait); box(); });
@@ -1913,6 +1974,7 @@ document.addEventListener("change", e => {
     }).catch(err => toast("Import failed: " + err.message, true));
     return;
   }
+  if (t.dataset.garminName !== undefined) { S.settings.garminShortcut = t.value.trim(); save(); return; }
   if (t.dataset.backupEvery !== undefined) { S.settings.backupEvery = parseInt(t.value) || 0; save(); render(); return; }
   if (t.dataset.range) {
     const [key, i] = t.dataset.range.split(":"), v = parseInt(t.value); if (!(v > 0)) return;
@@ -1935,6 +1997,8 @@ $("#sheet").addEventListener("click", e => { if (e.target.id === "sheet") closeS
 
 render();
 wodTicking();
+setTimeout(garminAuto, 700);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (garminPendingNow()) render(); else setTimeout(garminAuto, 700); } });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && wodDay().wodRun) { keepAwake(true); wodTick(); } });
 // accessibility: tell screen readers which tab is current and which toggles are on; Escape closes an open sheet
 let a11yQueued = false;
