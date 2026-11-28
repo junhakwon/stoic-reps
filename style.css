@@ -768,3 +768,7 @@ html[data-look] .hslide .runcard::before, html[data-look] .hslide .runcard::afte
 .hnav span { color: var(--muted); font-variant-numeric: tabular-nums; }
 /* 9: Lifts — tiles, quick groove and strength work together */
 .panel .qbar { margin-top: 0; }
+
+/* v45: a backup that's due shows as a dot on the More tab (no chip in the Train header) */
+.tabs button { position: relative; }
+.tabs button.due::after { content: ""; position: absolute; top: 9px; left: calc(50% + 9px); width: 9px; height: 9px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--card); }

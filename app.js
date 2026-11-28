@@ -584,6 +584,7 @@ function render() {
   root.dataset.look = look; root.dataset.theme = look === "classic" ? S.settings.theme : LOOKS[look].theme;
   const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = look === "classic" ? (S.settings.theme === "light" ? "#f4f1ea" : "#111214") : LOOKS[look].color;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  { const mt = document.querySelector('.tabs [data-tab="more"]'); if (mt) { mt.classList.toggle("due", backupDue()); mt.setAttribute("aria-label", backupDue() ? "More, backup due" : "More"); } }
   $("#view").innerHTML = tab === "home" ? homeView() : tab === "progress" ? progressView() : moreView();
   const car = $("#wcar"); if (car) { const cards = car.querySelectorAll(".wslide"), i = +car.dataset.at || 0;
     if (cards[i]) { car.style.scrollBehavior = "auto"; car.scrollLeft = cards[i].offsetLeft - cards[0].offsetLeft; car.style.scrollBehavior = ""; } }
@@ -593,7 +594,7 @@ function render() {
 // Train screen (design C): body + readiness, the 10-day path, daily ticks, the quote, exercise tiles
 // Train (v44): one screen. Spider-Man and readiness on top, a switcher (WOD · Cardio · Lifts · Streak) that shows one area at
 // a time, the quote at the bottom. Swipe sideways or tap to move between the areas. Nothing was taken out, only grouped.
-const PANELS = [["wod", "WOD"], ["cardio", "Cardio"], ["lifts", "Lifts"], ["streak", "Streak"]];
+const PANELS = [["wod", "WOD"], ["cardio", "Cardio"], ["lifts", "Quick"], ["streak", "Streak"]];   // "lifts" shows as Quick (user's name)
 const panelNow = () => { const st = S.settings; return st.panelDay === dayKey() && PANELS.some(x => x[0] === st.panel) ? st.panel : "wod"; };   // a new day opens on the WOD
 const setPanel = p => { S.settings.panel = p; S.settings.panelDay = dayKey(); };
 function panelBadge(k) {
@@ -611,6 +612,8 @@ function panelHtml(k, st) {
     + (logDay ? "" : fold("strength", "Strength work", "Sets and progression, if you want more", planCard()));
   return pathCard() + restDayCard();
 }
+const backupDue = () => { const st = S.settings, every = st.backupEvery ?? 7;
+  return !!every && Date.now() - (st.lastBackup || 0) >= every * 864e5 && (S.sets.length + S.runs.length + S.wods.length) > 0; };
 function backupChip() {
   const st = S.settings, every = st.backupEvery ?? 7;
   if (!every || logDay || Date.now() - (st.lastBackup || 0) < every * 864e5 || (!S.sets.length && !S.runs.length && !S.wods.length)) return "";
@@ -618,7 +621,7 @@ function backupChip() {
 }
 function homeView() {
   const d = curDay(), st = muscleState(), p = panelNow();
-  return '<div class="hdr"><h1>Unbothered</h1>' + backupChip()
+  return '<div class="hdr"><h1>Unbothered</h1>'
     + '<div class="dayctl ' + (logDay ? "past" : "") + '"><button data-day="-1" aria-label="Previous day" ' + (d <= addDays(dayKey(), -30) ? "disabled" : "") + '>‹</button>'
     + '<span>' + dayLabel(d) + '</span><button data-day="1" aria-label="Next day" ' + (logDay ? "" : "disabled") + '>›</button></div></div>'
     + (logDay ? '<p class="muted daynote">Creatine, protein and any sets you log now go to ' + (dayLabel(d).toLowerCase() === "yesterday" ? "yesterday" : dayLabel(d)) + '. <button class="link" data-day="0">Back to today</button></p>' : "")
